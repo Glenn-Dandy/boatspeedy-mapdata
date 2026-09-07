@@ -1,0 +1,22 @@
+Die Skripte und Konfigurationen in diesem Verzeichnis stehen unter der MIT-Lizenz.
+
+    Copyright (c) 2026 Glenn-Dandy
+
+    Hiermit wird unentgeltlich jeder Person, die eine Kopie dieser Software und der
+    zugehörigen Dokumentationsdateien erhält, die Erlaubnis erteilt, sie
+    uneingeschränkt zu nutzen, zu kopieren, zu ändern, zusammenzuführen, zu
+    veröffentlichen, zu verbreiten, unterzulizenzieren und zu verkaufen, sofern der
+    obige Urheberrechtsvermerk und dieser Erlaubnisvermerk in allen Kopien enthalten
+    sind. DIE SOFTWARE WIRD OHNE JEDE GEWÄHR BEREITGESTELLT.
+
+Die damit erzeugten Kartendaten stehen NICHT unter der MIT-Lizenz.
+
+Sie stammen aus OpenStreetMap und sind eine abgeleitete Datenbank im Sinne der
+Open Database License 1.0 (ODbL). Es gilt:
+
+  * Namensnennung: "© OpenStreetMap-Mitwirkende"
+  * Weitergabe unter gleichen Bedingungen: Wer die Kacheln oder daraus abgeleitete
+    Datenbanken weitergibt, muss dies ebenfalls unter ODbL tun.
+
+Lizenztext: https://opendatacommons.org/licenses/odbl/1-0/
+Quelle der Auszüge: https://download.geofabrik.de/

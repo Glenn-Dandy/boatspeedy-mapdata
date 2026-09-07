@@ -1,0 +1,10 @@
+# Gebiete, die eingelesen werden — Pfade wie bei Geofabrik unter
+# https://download.geofabrik.de/ , ohne "-latest.osm.pbf".
+#
+# Eine Zeile je Gebiet. Kommentare und Leerzeilen werden übergangen.
+# Reihenfolge egal; Wege, die in zwei Auszügen vorkommen (Grenzflüsse),
+# werden über ihre OSM-Kennung entdoppelt.
+#
+# Klein anfangen zum Prüfen des Ablaufs: europe/germany/bremen ist ~20 MB und in
+# einer Minute durch.
+europe/germany

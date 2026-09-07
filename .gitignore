@@ -1,0 +1,4 @@
+# Ergebnis und Zwischenstände gehören nicht ins Repo — die entstehen auf dem Server.
+/data/
+/build/work/
+.env
