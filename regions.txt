@@ -2,9 +2,60 @@
 # https://download.geofabrik.de/ , ohne "-latest.osm.pbf".
 #
 # Eine Zeile je Gebiet. Kommentare und Leerzeilen werden übergangen.
-# Reihenfolge egal; Wege, die in zwei Auszügen vorkommen (Grenzflüsse),
-# werden über ihre OSM-Kennung entdoppelt.
+# Reihenfolge egal; Wege, die in zwei Auszügen vorkommen (Grenzflüsse), werden über
+# ihre OSM-Kennung entdoppelt.
 #
-# Klein anfangen zum Prüfen des Ablaufs: europe/germany/bremen ist ~20 MB und in
-# einer Minute durch.
+# Ohne die Sammel-Auszüge "alps", "dach", "great-britain", "united-kingdom" und
+# "ireland-and-northern-ireland": Sie überschneiden sich mit den Ländern darunter.
+# Doppelte Objekte würden zwar entdoppelt, der Download fiele aber trotzdem an —
+# und das ist Geofabriks Bandbreite.
+#
+# Zum Prüfen des Ablaufs reicht eine einzelne kleine Zeile, etwa europe/germany/bremen.
+europe/albania
+europe/andorra
+europe/austria
+europe/azores
+europe/belarus
+europe/belgium
+europe/bosnia-herzegovina
+europe/britain-and-ireland
+europe/bulgaria
+europe/croatia
+europe/cyprus
+europe/czech-republic
+europe/denmark
+europe/estonia
+europe/faroe-islands
+europe/finland
+europe/france
+europe/georgia
 europe/germany
+europe/greece
+europe/guernsey-jersey
+europe/hungary
+europe/iceland
+europe/isle-of-man
+europe/italy
+europe/kosovo
+europe/latvia
+europe/liechtenstein
+europe/lithuania
+europe/luxembourg
+europe/macedonia
+europe/malta
+europe/moldova
+europe/monaco
+europe/montenegro
+europe/netherlands
+europe/norway
+europe/poland
+europe/portugal
+europe/romania
+europe/serbia
+europe/slovakia
+europe/slovenia
+europe/spain
+europe/sweden
+europe/switzerland
+europe/turkey
+europe/ukraine
