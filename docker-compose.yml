@@ -62,10 +62,17 @@ services:
     volumes:
       - ./data:/out
       - ./build/work:/work
+      # Die Skripte werden **eingehängt**, nicht ins Abbild kopiert. Sonst nimmt
+      # `docker compose run` weiter das alte Abbild, und eine Änderung am Skript bleibt
+      # ohne Wirkung — genau das ist einmal passiert und hat einen ganzen Lauf gekostet.
+      - ./build/build.sh:/build/build.sh:ro
+      - ./build/tile.py:/build/tile.py:ro
       - ./regions.txt:/build/regions.txt:ro
 
     security_opt:
       - no-new-privileges:true
 
-    # Genug zum Filtern, nicht genug, um die Maschine umzuwerfen.
-    mem_limit: 1500m
+    # Genug zum Filtern und Schneiden, nicht genug, um die Maschine umzuwerfen.
+    # Das Schneiden lief anfangs auf 512 MB gegen die Wand; seit es strömend arbeitet,
+    # braucht es wenig — der Deckel ist Vorsorge, keine Notwendigkeit.
+    mem_limit: 4g

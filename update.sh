@@ -15,7 +15,10 @@ echo "== Erzeuger bauen =="
 docker compose build --pull mapdata-build
 
 echo "== Kacheln erzeugen =="
-docker compose run --rm mapdata-build
+# Ins Protokoll **und** auf den Bildschirm: So kann ./status.sh später nachsehen,
+# wie weit ein Lauf gekommen ist, auch wenn niemand zugesehen hat.
+mkdir -p log
+docker compose run --rm mapdata-build 2>&1 | tee log/build.log
 
 echo "== Auslieferer starten =="
 docker compose up -d mapdata-web

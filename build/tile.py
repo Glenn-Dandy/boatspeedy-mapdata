@@ -10,6 +10,12 @@ um über Mobilfunk zu gehen.
 Das Ausgabeformat entspricht dem, was die App ohnehin von Overpass bekommt
 (`elements` mit `type`, `tags`, `geometry`). Damit liest sie die Kacheln mit
 demselben Code — die Datenquelle wechselt, die Auswertung bleibt.
+
+**In zwei Durchgängen, und das ist wesentlich.** Ein erster Versuch hielt alle Objekte
+im Speicher, bis alles gelesen war; bei Deutschland wurde der Vorgang dabei vom
+Betriebssystem abgeräumt. Jetzt wandert jedes Objekt sofort in eine Zwischendatei je
+Kachel, und erst danach wird Kachel für Kachel gepackt — im Speicher liegt immer nur
+eine.
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ import json
 import math
 import os
 import sys
-from collections import defaultdict
+from collections import OrderedDict
 
 # Nur diese Merkmale werden gebraucht — der Rest ist Ballast. Ohne diese Beschränkung
 # wächst eine Kachel um ein Vielfaches, ohne dass die App irgendetwas davon liest.
@@ -38,6 +44,11 @@ KEEP_NODE = (
 # weitere Stelle kostet über alle Stützpunkte hinweg spürbar Platz.
 PLACES = 5
 
+# So viele Zwischendateien bleiben gleichzeitig offen. Europa hat rund 800 Kacheln,
+# die Voreinstellung für offene Dateien liegt bei 1024 — ohne Deckel liefe das knapp
+# am Limit entlang.
+MAX_OPEN = 96
+
 
 def tile_name(lat: int, lon: int) -> str:
     """Kachelname nach Südwestecke, etwa `n50e011` — wie bei Höhendaten üblich."""
@@ -46,11 +57,40 @@ def tile_name(lat: int, lon: int) -> str:
     return f"{ns}{abs(lat):02d}{ew}{abs(lon):03d}"
 
 
-def tile_of(lat: float, lon: float) -> tuple[int, int]:
-    return math.floor(lat), math.floor(lon)
+class Buckets:
+    """Schreibt Objekte in Zwischendateien je Kachel und hält dabei wenige offen."""
+
+    def __init__(self, work_dir: str):
+        self.dir = work_dir
+        os.makedirs(work_dir, exist_ok=True)
+        self.open: OrderedDict[str, object] = OrderedDict()
+        self.names: set[str] = set()
+
+    def _handle(self, name: str):
+        fh = self.open.get(name)
+        if fh is not None:
+            self.open.move_to_end(name)
+            return fh
+        if len(self.open) >= MAX_OPEN:
+            _, victim = self.open.popitem(last=False)
+            victim.close()
+        # Anhängen, nicht überschreiben: dieselbe Kachel wird über mehrere Gebiete
+        # hinweg immer wieder geöffnet und geschlossen.
+        fh = open(os.path.join(self.dir, f"{name}.jsonl"), "a", encoding="utf-8")
+        self.open[name] = fh
+        self.names.add(name)
+        return fh
+
+    def add(self, name: str, line: str) -> None:
+        self._handle(name).write(line + "\n")
+
+    def close(self) -> None:
+        for fh in self.open.values():
+            fh.close()
+        self.open.clear()
 
 
-def load(path: str, buckets: dict, seen: set) -> tuple[int, int]:
+def collect(path: str, buckets: Buckets) -> tuple[int, int]:
     """Liest eine GeoJSON-Zeilendatei und verteilt die Objekte auf Kacheln."""
     kept = skipped = 0
     with open(path, encoding="utf-8") as fh:
@@ -72,13 +112,10 @@ def load(path: str, buckets: dict, seen: set) -> tuple[int, int]:
                 skipped += 1
                 continue
 
-            # Grenzflüsse stehen in beiden Länderauszügen. Ohne diese Prüfung läge
-            # die Elbe an der tschechischen Grenze doppelt in derselben Kachel.
+            # Die Kennung bleibt vorerst dabei: Grenzflüsse stehen in beiden
+            # Länderauszügen und werden erst beim Packen entdoppelt — dort ist die
+            # Menge klein genug, um sie im Speicher zu halten.
             oid = props.pop("@id", None)
-            if oid is not None:
-                if oid in seen:
-                    continue
-                seen.add(oid)
 
             if gtype == "LineString":
                 tags = {k: v for k, v in props.items() if k in KEEP_WAY}
@@ -94,11 +131,17 @@ def load(path: str, buckets: dict, seen: set) -> tuple[int, int]:
                     skipped += 1
                     continue
                 element = {"type": "way", "tags": tags, "geometry": pts}
+                if oid is not None:
+                    element["i"] = oid
+                out = json.dumps(element, separators=(",", ":"), ensure_ascii=False)
                 # In jede Kachel, die der Weg berührt. Ein Fluss, der über eine Kante
                 # läuft, liegt damit vollständig in beiden — etwas Doppelung, dafür
                 # passt das Netz beim Zusammensetzen lückenlos zusammen.
-                for t in {tile_of(p["lat"], p["lon"]) for p in pts}:
-                    buckets[t].append(element)
+                tiles = {
+                    (math.floor(p["lat"]), math.floor(p["lon"])) for p in pts
+                }
+                for lat, lon in tiles:
+                    buckets.add(tile_name(lat, lon), out)
                 kept += 1
 
             elif gtype == "Point":
@@ -109,7 +152,12 @@ def load(path: str, buckets: dict, seen: set) -> tuple[int, int]:
                 lat = round(coords[1], PLACES)
                 lon = round(coords[0], PLACES)
                 element = {"type": "node", "tags": tags, "lat": lat, "lon": lon}
-                buckets[tile_of(lat, lon)].append(element)
+                if oid is not None:
+                    element["i"] = oid
+                buckets.add(
+                    tile_name(math.floor(lat), math.floor(lon)),
+                    json.dumps(element, separators=(",", ":"), ensure_ascii=False),
+                )
                 kept += 1
 
             else:
@@ -117,11 +165,29 @@ def load(path: str, buckets: dict, seen: set) -> tuple[int, int]:
     return kept, skipped
 
 
-def write(buckets: dict, out_dir: str, generated: str) -> dict:
+def pack(buckets: Buckets, out_dir: str, generated: str) -> dict:
+    """Packt jede Kachel für sich — es liegt immer nur eine im Speicher."""
     os.makedirs(out_dir, exist_ok=True)
     index = {}
-    for (lat, lon), elements in sorted(buckets.items()):
-        name = tile_name(lat, lon)
+    for name in sorted(buckets.names):
+        src = os.path.join(buckets.dir, f"{name}.jsonl")
+        elements = []
+        seen: set = set()
+        with open(src, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                el = json.loads(line)
+                oid = el.pop("i", None)
+                if oid is not None:
+                    if oid in seen:
+                        continue
+                    seen.add(oid)
+                elements.append(el)
+        if not elements:
+            continue
+
         payload = {
             "version": 1,
             "tile": name,
@@ -138,25 +204,31 @@ def write(buckets: dict, out_dir: str, generated: str) -> dict:
             "bytes": os.path.getsize(path),
             "elements": len(elements),
         }
+        os.remove(src)
     return index
 
 
 def main() -> int:
-    if len(sys.argv) < 4:
-        print("Aufruf: tile.py <ausgabe-verzeichnis> <datum> <geojsonseq...>", file=sys.stderr)
+    if len(sys.argv) < 5:
+        print(
+            "Aufruf: tile.py <ausgabe> <arbeitsverzeichnis> <datum> <geojsonseq...>",
+            file=sys.stderr,
+        )
         return 2
-    out_dir, generated, inputs = sys.argv[1], sys.argv[2], sys.argv[3:]
+    out_dir, work_dir, generated, inputs = (
+        sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+    )
 
-    buckets: dict[tuple[int, int], list] = defaultdict(list)
-    seen: set = set()
+    buckets = Buckets(work_dir)
     total_kept = total_skipped = 0
     for path in inputs:
-        kept, skipped = load(path, buckets, seen)
+        kept, skipped = collect(path, buckets)
         total_kept += kept
         total_skipped += skipped
-        print(f"  {os.path.basename(path)}: {kept} übernommen, {skipped} übergangen")
+        print(f"  {os.path.basename(path)}: {kept} übernommen, {skipped} übergangen", flush=True)
+    buckets.close()
 
-    index = write(buckets, out_dir, generated)
+    index = pack(buckets, out_dir, generated)
     total_bytes = sum(v["bytes"] for v in index.values())
 
     with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:

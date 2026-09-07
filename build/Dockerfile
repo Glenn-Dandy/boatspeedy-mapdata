@@ -11,8 +11,8 @@ RUN apt-get update \
       curl \
  && rm -rf /var/lib/apt/lists/*
 
-COPY build.sh tile.py /build/
-RUN chmod +x /build/build.sh
-
+# Die Skripte kommen zur Laufzeit als Einhängepunkt dazu (siehe docker-compose.yml).
+# Sie hier hineinzukopieren hieße, das Abbild nach jeder Änderung neu bauen zu müssen —
+# und wer das vergisst, lässt unbemerkt die alte Fassung laufen.
 WORKDIR /build
-ENTRYPOINT ["/build/build.sh"]
+ENTRYPOINT ["sh", "/build/build.sh"]

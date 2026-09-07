@@ -16,12 +16,18 @@ BASE=${BASE:-https://download.geofabrik.de}
 
 mkdir -p "$WORK" "$OUT"
 GEO="$WORK/geojson"
-rm -rf "$GEO"
+rm -rf "$GEO" "$WORK/tiles"
 mkdir -p "$GEO"
 
-# Was uns interessiert. Bäche sind dabei, weil das Kanu sie benutzen darf — ein
-# Motorboot nicht, aber das entscheidet die App anhand der Merkmale, nicht wir hier.
-WAYS='w/waterway=river,canal,fairway,stream'
+# Was uns interessiert. **Ohne Bäche.** Sie waren eine Zeit lang dabei, weil ein Kanu
+# sie theoretisch benutzen könnte — praktisch ist kaum einer befahrbar, und sie machten
+# 800.249 von 871.907 Objekten aus: 87 % der Datenmenge für den seltensten Fall.
+# Deutschland schrumpft ohne sie von 53 auf rund 7 MB.
+#
+# Welches Fahrzeug unterwegs ist, entscheidet **nicht** über die Gewässerart, sondern
+# nur darüber, welche Verbote gelten (boat=no, motorboat=no, canoe=no) — und das wertet
+# die App aus den Merkmalen aus, die hier ohnehin mitkommen.
+WAYS='w/waterway=river,canal,fairway'
 # Was den Weg versperrt, und die Hinweiszeichen mit ihren Werten.
 NODES='n/waterway=lock_gate,weir,dam,sluice_gate'
 BARRIERS='n/barrier=no_entry,prohibition,lock_gate'
@@ -67,8 +73,8 @@ fi
 
 echo
 echo "== Kacheln schneiden =="
-python3 /build/tile.py "$OUT" "$(date -u +%Y-%m-%d)" "$GEO"/*.geojsonseq
+python3 /build/tile.py "$OUT" "$WORK/tiles" "$(date -u +%Y-%m-%d)" "$GEO"/*.geojsonseq
 
-rm -rf "$GEO"
+rm -rf "$GEO" "$WORK/tiles"
 echo
 echo "Fertig. Ergebnis liegt in $OUT."
