@@ -77,6 +77,17 @@ gedacht — **monatlich reicht**, und mehr wäre unhöflich: Jeder Lauf lädt me
 Gigabyte von Geofabrik. Wasserwege ändern sich in Monaten kaum; bei Wehren und
 Sperrungen reden wir über Jahre.
 
+### Bereits geholte Auszüge
+
+Ein Auszug, der schon auf der Platte liegt und **jünger als 30 Tage** ist, wird
+wiederverwendet statt neu geholt. Das ist keine Bequemlichkeit, sondern Rücksicht:
+Beim Suchen zweier Fehler kamen an einem Tag vier volle Deutschland-Downloads zusammen,
+rund 20 GB — danach wies Geofabriks Proxy jeden weiteren mit einem sofortigen 502 ab und
+ein ganzer Europa-Lauf scheiterte an allen Gebieten.
+
+Mit `MAX_AGE_DAYS` lässt sich die Frist ändern, mit `KEEP_PBF=1` bleiben die Auszüge
+nach dem Filtern liegen.
+
 ### Platzbedarf
 
 Die Gebiete werden **nacheinander** verarbeitet, und jeder Auszug wird sofort nach dem

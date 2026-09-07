@@ -13,8 +13,11 @@ WORK=${WORK:-/work}
 OUT=${OUT:-/out}
 REGIONS=${REGIONS:-/build/regions.txt}
 BASE=${BASE:-https://download.geofabrik.de}
-# Ab diesem Alter wird ein liegengebliebener Auszug neu geholt.
-MAX_AGE_DAYS=${MAX_AGE_DAYS:-7}
+# Ab diesem Alter wird ein liegengebliebener Auszug neu geholt. Ein Monat passt zum
+# Auffrischrhythmus: Der nächste geplante Lauf holt ohnehin neu, und alles dazwischen —
+# Filteränderungen, Fehlersuche, ein zweiter Anlauf nach einem Ausfall — kostet keine
+# fremde Bandbreite mehr.
+MAX_AGE_DAYS=${MAX_AGE_DAYS:-30}
 
 mkdir -p "$WORK" "$OUT"
 GEO="$WORK/geojson"
