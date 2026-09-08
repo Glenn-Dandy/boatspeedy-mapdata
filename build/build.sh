@@ -88,7 +88,13 @@ while IFS= read -r line; do
             rc=0
             pyosmium-up-to-date --size 2000 -o "$pbf.new" "$pbf" >/dev/null 2>&1 || rc=$?
             if [ "$rc" -eq 0 ]; then
-                mv -f "$pbf.new" "$pbf"
+                # Rueckgabe 0 heisst "jetzt aktuell" - das schliesst "war schon aktuell"
+                # ein, und dann wird gar keine Ausgabedatei geschrieben. Ein blindes mv
+                # scheitert hier und beendet mit set -e den ganzen Lauf.
+                if [ -s "$pbf.new" ]; then
+                    mv -f "$pbf.new" "$pbf"
+                fi
+                rm -f "$pbf.new"
                 updated=1
                 break
             elif [ "$rc" -eq 1 ] && [ -s "$pbf.new" ]; then
