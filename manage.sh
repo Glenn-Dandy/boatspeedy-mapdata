@@ -161,17 +161,43 @@ neuaufbau() {
     starte ""
 }
 
-ein_land() {
-    local liste=() r
-    for r in $(regions); do liste+=("${r#europe/}" ""); done
-    local g
-    g=$("$UI" --title "$TITEL" --menu \
-        "Ein Land neu holen und verarbeiten.\nDie anderen bleiben unberührt." \
-        20 60 12 "${liste[@]}" 3>&1 1>&2 2>&3) || return
-    [ -z "$g" ] && return
-    rm -f "$GEO/europe_$g.geojsonseq"
-    printf 'europe/%s\n' "$g" > /tmp/mapdata-one.txt
-    starte /tmp/mapdata-one.txt
+# Mehrfachauswahl statt eines einzelnen Landes: Wer nach einem Ausfall drei Gebiete
+# nachholen will, soll nicht dreimal durch dasselbe Menü.
+#
+# Neben jedem Land steht sein Stand — sonst wählt man blind und weiß hinterher nicht,
+# ob sich überhaupt etwas geändert hat.
+laender() {
+    local liste=() r name pbf stand
+    for r in $(regions); do
+        name=$(printf '%s' "$r" | tr '/' '_')
+        pbf="$WORK/$name.osm.pbf"
+        if [ -s "$pbf" ]; then
+            stand="$(human "$(stat -c %s "$pbf")"), $(date -d "@$(stat -c %Y "$pbf")" '+%d.%m.' 2>/dev/null)"
+        else
+            stand="noch nicht geholt"
+        fi
+        # tag, beschreibung, vorauswahl
+        liste+=("${r#europe/}" "$stand" off)
+    done
+
+    local wahl
+    wahl=$("$UI" --title "$TITEL" --checklist \
+        "Welche Gebiete auffrischen?\n\nLeertaste wählt aus, Tab zu den Knöpfen. Nur die Gewählten werden neu geholt und verarbeitet; die übrigen bleiben, wie sie sind." \
+        22 72 12 "${liste[@]}" 3>&1 1>&2 2>&3) || return
+    # whiptail gibt die Auswahl in Anführungszeichen zurück
+    wahl=$(printf '%s' "$wahl" | tr -d '"')
+    [ -z "$wahl" ] && return
+
+    local anzahl=0
+    : > /tmp/mapdata-auswahl.txt
+    for g in $wahl; do
+        rm -f "$GEO/europe_$g.geojsonseq"
+        printf 'europe/%s\n' "$g" >> /tmp/mapdata-auswahl.txt
+        anzahl=$((anzahl + 1))
+    done
+
+    frage "$anzahl Gebiete auffrischen?\n\n$(tr '\n' ' ' < /tmp/mapdata-auswahl.txt | sed 's|europe/||g')\n\nVorhandene Auszüge werden dabei nur aktualisiert, nicht neu geladen. Die Kacheln entstehen danach aus allen Gebieten neu." 14 || return
+    starte /tmp/mapdata-auswahl.txt
 }
 
 gebiete() {
@@ -280,14 +306,14 @@ while true; do
     else
         wahl=$("$UI" --title "$TITEL$MAUS" --menu "$(lage)" 19 74 6 \
             "1" "Auffrischen — nur Änderungen holen" \
-            "2" "Ein Land — gezielt neu holen" \
+            "2" "Gebiete auffrischen — gezielt auswählen" \
             "3" "Neu aufbauen — alles, ohne Download" \
             "4" "Gebiete — Übersicht" \
             "5" "Auslieferer prüfen" \
             "6" "Platz freigeben" \
             3>&1 1>&2 2>&3) || break
         case "$wahl" in
-            1) auffrischen ;; 2) ein_land ;; 3) neuaufbau ;;
+            1) auffrischen ;; 2) laender ;; 3) neuaufbau ;;
             4) gebiete ;; 5) pruefen ;; 6) platz ;;
         esac
     fi
