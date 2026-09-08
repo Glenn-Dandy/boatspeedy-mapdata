@@ -20,6 +20,7 @@ eine.
 
 from __future__ import annotations
 
+import glob
 import gzip
 import json
 import math
@@ -179,6 +180,8 @@ def collect(path: str, buckets: Buckets) -> tuple[int, int]:
 def pack(buckets: Buckets, out_dir: str, generated: str) -> dict:
     """Packt jede Kachel für sich — es liegt immer nur eine im Speicher."""
     os.makedirs(out_dir, exist_ok=True)
+    for leftover in glob.glob(os.path.join(out_dir, "*.json.gz.tmp")):
+        os.remove(leftover)
     index = {}
     for name in sorted(buckets.names):
         src = os.path.join(buckets.dir, f"{name}.jsonl")
@@ -207,10 +210,17 @@ def pack(buckets: Buckets, out_dir: str, generated: str) -> dict:
         }
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
         path = os.path.join(out_dir, f"{name}.json.gz")
+        tmp = f"{path}.tmp"
         # mtime=0, damit zwei Läufe mit gleichem Inhalt gleiche Dateien ergeben —
         # sonst sieht jeder Lauf nach Änderung aus, obwohl sich nichts geändert hat.
-        with gzip.GzipFile(path, "wb", compresslevel=9, mtime=0) as fh:
+        with gzip.GzipFile(tmp, "wb", compresslevel=9, mtime=0) as fh:
             fh.write(raw)
+        # Erst schreiben, dann umbenennen. Der Auslieferer bedient währenddessen weiter
+        # aus demselben Verzeichnis; an Ort und Stelle geschrieben bekäme jemand, der
+        # genau in diesem Augenblick fragt, ein halbes Stück. Das Umbenennen innerhalb
+        # eines Dateisystems ist unteilbar — man sieht entweder die alte Kachel oder die
+        # neue, nie etwas dazwischen.
+        os.replace(tmp, path)
         index[name] = {
             "bytes": os.path.getsize(path),
             "elements": len(elements),

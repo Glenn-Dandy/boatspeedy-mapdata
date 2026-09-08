@@ -193,17 +193,33 @@ gebiete() {
     "$UI" --title "$TITEL" --scrolltext --msgbox "$t" 24 64
 }
 
+# Der Auslieferer ist der nginx, der die Kacheln herausgibt. Geprueft wird zuerst;
+# neu gestartet nur, wenn etwas nicht stimmt.
+#
+# Warum es das ueberhaupt braucht: Eine Docker-Einhaengung folgt dem Inode, nicht dem
+# Pfad. Wird data/ geloescht und neu angelegt, zeigt der laufende Container weiter auf
+# das alte, geloeschte Verzeichnis und liefert 404, obwohl die Dateien da sind. Genau
+# das ist hier schon passiert.
 pruefen() {
-    docker compose up -d --force-recreate mapdata-web >/dev/null 2>&1
-    sleep 3
     local port a b
     port=$(grep -E '^MAPDATA_PORT=' .env 2>/dev/null | cut -d= -f2); port=${port:-8081}
-    a=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/healthz" 2>/dev/null || echo '---')
-    b=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/index.json" 2>/dev/null || echo '---')
+    pruefe_codes() {
+        a=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/healthz" 2>/dev/null || echo '---')
+        b=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/index.json" 2>/dev/null || echo '---')
+    }
+    pruefe_codes
     if [ "$a$b" = "200200" ]; then
-        msg "Auslieferer neu gestartet — alles in Ordnung.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b" 11
+        msg "Auslieferer in Ordnung — kein Neustart nötig.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b" 11
+        return
+    fi
+    frage "Auslieferer antwortet nicht richtig.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b\n\nNeu starten? Das hilft vor allem, wenn das Datenverzeichnis neu angelegt wurde — eine Einhängung folgt dem Inode, nicht dem Pfad." 14 || return
+    docker compose up -d --force-recreate mapdata-web >/dev/null 2>&1
+    sleep 3
+    pruefe_codes
+    if [ "$a$b" = "200200" ]; then
+        msg "Neu gestartet — jetzt in Ordnung.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b" 11
     else
-        msg "Auslieferer antwortet nicht richtig.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b" 11
+        msg "Auch nach dem Neustart nicht in Ordnung.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b\n\nProtokoll:  docker compose logs mapdata-web" 13
     fi
 }
 
@@ -247,7 +263,7 @@ while true; do
             "1" "Zusehen — Fortschritt" \
             "2" "Abbrechen — Vorgang stoppen" \
             "3" "Gebiete — Übersicht" \
-            "4" "Auslieferer prüfen und neu starten" \
+            "4" "Auslieferer prüfen" \
             "5" "Platz freigeben" \
             3>&1 1>&2 2>&3) || break
         case "$wahl" in
