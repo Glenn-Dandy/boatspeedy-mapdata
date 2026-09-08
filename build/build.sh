@@ -21,6 +21,8 @@ BASE=${BASE:-https://download.geofabrik.de}
 MAX_AGE_DAYS=${MAX_AGE_DAYS:-180}
 
 mkdir -p "$WORK" "$OUT"
+# Halbe Downloads eines abgebrochenen Laufs wegräumen.
+rm -f "$WORK"/*.part
 GEO="$WORK/geojson"
 # Die Zwischenergebnisse der Länder bleiben **liegen**. Damit ist der Lauf
 # wiederaufnehmbar: Bricht er bei Land dreißig ab — Netz weg, Sperre, Neustart —, macht
@@ -121,15 +123,19 @@ while IFS= read -r line; do
     # Hartnäckig, aber geduldig. Geofabrik antwortet unter Last mit 502; mit nur drei
     # Versuchen brach ein Lauf über 48 Gebiete schon beim ersten Schluckauf ab.
     # --retry-all-errors nimmt auch die 502 mit, nicht nur Verbindungsfehler.
+    # Erst unter anderem Namen laden, dann umbenennen. Ein abgebrochener Download —
+    # Neustart, Netz weg, Strg-C — hinterlaesst sonst eine halbe Datei, die nicht leer
+    # ist und deshalb beim naechsten Lauf als gueltiger Auszug durchgeht.
     if ! curl -fsSL --retry 6 --retry-delay 20 --retry-all-errors \
-            -o "$pbf" "$BASE/$region-latest.osm.pbf"; then
+            -o "$pbf.part" "$BASE/$region-latest.osm.pbf"; then
         echo "  FEHLER: $region nicht ladbar — übersprungen" >&2
         failed="$failed $region"
-        rm -f "$pbf"
+        rm -f "$pbf.part"
         # Ein fehlendes Gebiet ist eine Lücke in der Abdeckung, aber kein Grund, die
         # anderen siebenundvierzig wegzuwerfen. Am Ende steht, was gefehlt hat.
         continue
     fi
+    mv -f "$pbf.part" "$pbf"
     printf '  %s\n' "$(du -h "$pbf" | cut -f1) geladen"
     fi
 
