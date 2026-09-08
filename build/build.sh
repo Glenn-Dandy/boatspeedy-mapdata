@@ -175,7 +175,12 @@ fi
 
 echo
 echo "== Kacheln schneiden =="
-python3 /build/tile.py "$OUT" "$WORK/tiles" "$(date -u +%Y-%m-%d)" "$GEO"/*.geojsonseq
+# Mit Uhrzeit, nicht nur mit Datum. Tagesgenau reichte nicht: Laufen an einem Tag zwei
+# Laeufe - erst der grosse, abends noch einer fuer ein einzelnes Land -, traegt die
+# geaenderte Kachel dasselbe Datum wie vorher, und die App sieht keinen Unterschied. Der
+# Vergleich ist ein Zeichenkettenvergleich; ein laengerer Wert ist groesser als das
+# blosse Datum, kuerzere Werte aus frueheren Laeufen bleiben also korrekt aelter.
+python3 /build/tile.py "$OUT" "$WORK/tiles" "$(date -u +%Y-%m-%dT%H:%MZ)" "$GEO"/*.geojsonseq
 
 # Die Zwischenergebnisse bleiben für den nächsten Aufruf liegen; nur die Kachel-
 # Zwischendateien werden aufgeräumt. Wer Platz braucht: rm -rf build/work/geojson
