@@ -35,10 +35,18 @@ KEEP_WAY = (
 )
 KEEP_NODE = (
     "waterway", "barrier", "name",
-    "seamark:notice:category", "seamark:notice:information",
-    "seamark:notice:impact", "seamark:notice:function",
     "waterway:maxspeed", "maxspeed",
 )
+
+# Bei Seezeichen wird **alles** behalten, was mit `seamark:` beginnt.
+#
+# Eine feste Liste war hier falsch: Sie enthielt die Hinweistafeln, aber nicht
+# `seamark:type` — womit jedes Zeichen seine Kennung verlor und stillschweigend
+# wegfiel. In den Kacheln standen null Seezeichen, obwohl allein für Deutschland
+# 90.963 im Zwischenergebnis lagen. Welche Merkmale ein Zeichen trägt, hängt von
+# seiner Art ab (Tonne, Bake, Feuer, Sperrgebiet); eine Liste davon zu pflegen
+# hieße, sie immer wieder unvollständig zu haben.
+SEAMARK_PREFIX = "seamark:"
 
 # Fünf Nachkommastellen sind gut ein Meter. Feiner brauchen wir es nicht, und jede
 # weitere Stelle kostet über alle Stützpunkte hinweg spürbar Platz.
@@ -145,7 +153,10 @@ def collect(path: str, buckets: Buckets) -> tuple[int, int]:
                 kept += 1
 
             elif gtype == "Point":
-                tags = {k: v for k, v in props.items() if k in KEEP_NODE}
+                tags = {
+                    k: v for k, v in props.items()
+                    if k in KEEP_NODE or k.startswith(SEAMARK_PREFIX)
+                }
                 if not tags:
                     skipped += 1
                     continue
