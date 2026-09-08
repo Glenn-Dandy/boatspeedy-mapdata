@@ -25,6 +25,7 @@ import gzip
 import json
 import math
 import os
+import re
 import sys
 from collections import OrderedDict
 
@@ -177,12 +178,47 @@ def collect(path: str, buckets: Buckets) -> tuple[int, int]:
     return kept, skipped
 
 
+def kopfdatum(path: str) -> str | None:
+    """Nur das Datum vorn aus einer Kachel — die Objekte dahinter sind Megabyte."""
+    try:
+        with gzip.open(path, "rb") as fh:
+            kopf = fh.read(200).decode("utf-8", "ignore")
+    except OSError:
+        return None
+    treffer = re.search(r'"generated":"([^"]+)"', kopf)
+    return treffer.group(1) if treffer else None
+
+
+def vorhanden(path: str) -> tuple[list, str | None]:
+    """Objekte und Datum einer schon ausgelieferten Kachel — für den Vergleich."""
+    try:
+        with gzip.open(path, "rb") as fh:
+            alt = json.loads(fh.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return [], None
+    return alt.get("elements") or [], alt.get("generated")
+
+
+def gleich(a: list, b: list) -> bool:
+    """Ob zwei Objektlisten dasselbe enthalten — ohne Rücksicht auf die Reihenfolge.
+
+    Die Reihenfolge hängt daran, in welcher Folge die Länderdateien gelesen wurden. Wird
+    ein einzelnes Gebiet neu verarbeitet, kann sie sich verschieben, ohne dass sich etwas
+    geändert hätte. Verglichen wird deshalb, **was** drinsteht, nicht in welcher Ordnung.
+    """
+    if len(a) != len(b):
+        return False
+    schluessel = lambda el: json.dumps(el, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return sorted(map(schluessel, a)) == sorted(map(schluessel, b))
+
+
 def pack(buckets: Buckets, out_dir: str, generated: str) -> dict:
     """Packt jede Kachel für sich — es liegt immer nur eine im Speicher."""
     os.makedirs(out_dir, exist_ok=True)
     for leftover in glob.glob(os.path.join(out_dir, "*.json.gz.tmp")):
         os.remove(leftover)
     index = {}
+    unveraendert = 0
     for name in sorted(buckets.names):
         src = os.path.join(buckets.dir, f"{name}.jsonl")
         elements = []
@@ -202,6 +238,28 @@ def pack(buckets: Buckets, out_dir: str, generated: str) -> dict:
         if not elements:
             continue
 
+        path = os.path.join(out_dir, f"{name}.json.gz")
+
+        # **Unveränderte Kacheln behalten ihr Datum.**
+        #
+        # Ein Lauf über ein einzelnes Land schneidet trotzdem alle Kacheln neu — anders
+        # ginge es nicht, ein Fluss läuft über die Grenze und die Kachel braucht beide
+        # Seiten. Wurde dabei jeder Kachel das Lauf-Datum aufgestempelt, hielt die App
+        # anschließend **alles** für veraltet: Nach einem Deutschland-Lauf wollte sie auch
+        # die portugiesischen Kacheln neu laden, in denen sich seit Monaten nichts geändert
+        # hat. In einem Umkreis von 150 km sind das rund 3,4 MB, von denen eine einzige
+        # Kachel wirklich neu ist.
+        alte, altes_datum = vorhanden(path)
+        if altes_datum and gleich(alte, elements):
+            index[name] = {
+                "bytes": os.path.getsize(path),
+                "elements": len(alte),
+                "generated": altes_datum,
+            }
+            os.remove(src)
+            unveraendert += 1
+            continue
+
         payload = {
             "version": 1,
             "tile": name,
@@ -209,7 +267,6 @@ def pack(buckets: Buckets, out_dir: str, generated: str) -> dict:
             "elements": elements,
         }
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
-        path = os.path.join(out_dir, f"{name}.json.gz")
         tmp = f"{path}.tmp"
         # mtime=0, damit zwei Läufe mit gleichem Inhalt gleiche Dateien ergeben —
         # sonst sieht jeder Lauf nach Änderung aus, obwohl sich nichts geändert hat.
@@ -224,8 +281,11 @@ def pack(buckets: Buckets, out_dir: str, generated: str) -> dict:
         index[name] = {
             "bytes": os.path.getsize(path),
             "elements": len(elements),
+            "generated": generated,
         }
         os.remove(src)
+    if unveraendert:
+        print(f"  {unveraendert} Kacheln unverändert, Datum behalten", flush=True)
     return index
 
 
@@ -273,6 +333,12 @@ def main() -> int:
         k: v for k, v in merged.items()
         if os.path.isfile(os.path.join(out_dir, f"{k}.json.gz"))
     }
+    # Eintraege aus einem aelteren Verzeichnis tragen noch kein eigenes Datum. Es steht in
+    # der Kachel selbst - von dort wird es einmalig nachgetragen, damit die App auch die
+    # nicht angefassten Gebiete je Kachel vergleichen kann.
+    for name, eintrag in merged.items():
+        if not eintrag.get("generated"):
+            eintrag["generated"] = kopfdatum(os.path.join(out_dir, f"{name}.json.gz")) or generated
     index = dict(sorted(merged.items()))
     total_bytes = sum(v["bytes"] for v in index.values())
 
