@@ -28,14 +28,11 @@ running() { [ -n "$(docker ps --filter name=mapdata-build -q 2>/dev/null)" ]; }
 regions() { sed 's/#.*//' regions.txt | tr -d ' \t\r' | grep -v '^$'; }
 human()   { numfmt --to=iec --suffix=B "${1:-0}" 2>/dev/null || echo "${1:-0}B"; }
 
-# Wie weit ist der laufende Vorgang? Gezählt wird an den Überschriften im Protokoll.
-fortschritt() {
-    local total done_ current
-    total=$(regions | wc -l)
-    done_=$(grep -c '^== europe/' "$LOG" 2>/dev/null || echo 0)
-    current=$(grep '^== europe/' "$LOG" 2>/dev/null | tail -1 | sed 's/^== //; s/ ==$//')
-    printf '%s|%s|%s' "$done_" "$total" "${current:-—}"
-}
+# Wie weit ist der Vorgang? **Gezaehlt wird im Dateisystem, nicht im Protokoll.**
+# Das Protokoll waechst ueber Laeufe hinweg und meldete schon "71 von 48"; die
+# Zwischenergebnisse dagegen sind die Wahrheit: eine Datei je fertigem Gebiet.
+fertige()  { find "$GEO" -name '*.geojsonseq' 2>/dev/null | wc -l; }
+aktuelles() { grep '^== europe/' "$LOG" 2>/dev/null | tail -1 | sed 's/^== //; s/ ==$//'; }
 
 schritt() {  # die letzte inhaltliche Zeile, ohne Docker-Geplapper
     grep -vE '^ (Container|Network|Image)|^#[0-9]|^ *$' "$LOG" 2>/dev/null | tail -1 | sed 's/^ *//'
@@ -60,9 +57,8 @@ kopf() {
     printf '   Platte         %s frei\n' "$(df -h . | awk 'NR==2{print $4}')"
 
     if running; then
-        local f d t c
-        f=$(fortschritt); d=${f%%|*}; t=$(printf '%s' "$f" | cut -d'|' -f2); c=${f##*|}
-        printf '\n   %sLäuft%s  %s von %s Gebieten — %s\n' "$Y" "$N" "$d" "$t" "$c"
+        printf '\n   %sLäuft%s  %s von %s Gebieten — %s\n' \
+            "$Y" "$N" "$(fertige)" "$(regions | wc -l)" "$(aktuelles)"
         printf '   %s%s%s\n' "$DIM" "$(schritt)" "$N"
     fi
     printf '\n'
@@ -138,32 +134,58 @@ neuaufbau() {
     starte ""
 }
 
+balken() {  # $1 = fertig, $2 = gesamt, $3 = Breite
+    local d=$1 t=$2 w=$3 f i
+    f=$(( t > 0 ? d * w / t : 0 ))
+    printf '['
+    for ((i = 0; i < w; i++)); do
+        if [ "$i" -lt "$f" ]; then printf '%s' "█"; else printf '%s' "░"; fi
+    done
+    printf ']'
+}
+
+gebietsraster() {  # zeigt alle Gebiete mit Zustand, vier je Zeile
+    local aktuell="$1" r name mark col=0
+    for r in $(regions); do
+        name=$(printf '%s' "$r" | tr '/' '_')
+        if [ -s "$GEO/$name.geojsonseq" ]; then
+            mark="$G✓$N"
+        elif [ "$r" = "$aktuell" ]; then
+            mark="$Y▸$N"
+        else
+            mark="$DIM·$N"
+        fi
+        printf '  %b %-16.16s' "$mark" "${r#europe/}"
+        col=$((col + 1))
+        [ $((col % 4)) -eq 0 ] && printf '\n'
+    done
+    [ $((col % 4)) -ne 0 ] && printf '\n'
+}
+
 zusehen() {
     if [ ! -f "$LOG" ]; then printf '\n Noch kein Protokoll.\n'; return; fi
-    printf '\n %sMit Strg-C zurück ins Menü.%s\n' "$DIM" "$N"
-    trap ' ' INT
+    local total; total=$(regions | wc -l)
     while true; do
         clear 2>/dev/null || true
-        local f d t c
-        f=$(fortschritt); d=${f%%|*}; t=$(printf '%s' "$f" | cut -d'|' -f2); c=${f##*|}
+        local d c seit
+        d=$(fertige); c=$(aktuelles)
         if running; then
-            printf '\n %sLäuft%s — %s von %s Gebieten\n\n' "$Y" "$N" "$d" "$t"
-            # Ein Balken sagt mehr als eine Zahl.
-            local width=50 filled
-            filled=$(( t > 0 ? d * width / t : 0 ))
-            printf ' ['
-            printf '%0.s#' $(seq 1 "$filled") 2>/dev/null
-            printf '%0.s·' $(seq 1 $((width - filled))) 2>/dev/null
-            printf ']  %s\n\n' "$c"
+            seit=$(docker ps --filter name=mapdata-build --format '{{.Status}}' | head -1)
+            printf '\n %sLauf läuft%s   %s\n\n' "$Y" "$N" "$seit"
         else
-            printf '\n %sKein Lauf aktiv.%s Letzter Stand:\n\n' "$G" "$N"
+            printf '\n %sKein Lauf aktiv%s\n\n' "$G" "$N"
         fi
-        printf ' %sletzte Zeilen:%s\n' "$DIM" "$N"
-        grep -vE '^ (Container|Network|Image)|^#[0-9]' "$LOG" 2>/dev/null | tail -12 | sed 's/^/   /'
-        printf '\n %sStrg-C beendet die Ansicht (nicht den Lauf).%s\n' "$DIM" "$N"
-        sleep 3
+        printf ' '; balken "$d" "$total" 40
+        printf '  %s von %s' "$d" "$total"
+        [ -n "$c" ] && [ "$c" != "—" ] && printf '   %s%s%s' "$B" "${c#europe/}" "$N"
+        printf '\n\n'
+        gebietsraster "$c"
+        printf '\n %s%s%s\n\n' "$DIM" "$(schritt)" "$N"
+        printf ' %sBeliebige Taste zurück ins Menü (der Lauf läuft weiter).%s\n' "$DIM" "$N"
+        # -t wartet und bricht bei jedem Tastendruck ab: kein Strg-C nötig, und
+        # anders als ein trap kann man sich hier nicht festfahren.
+        read -rsn1 -t 3 _ && return
     done
-    trap - INT
 }
 
 # ── Einzelnes ─────────────────────────────────────────────────────────────────
