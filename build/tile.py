@@ -240,9 +240,33 @@ def main() -> int:
     buckets.close()
 
     index = pack(buckets, out_dir, generated)
+
+    # Das vorhandene Verzeichnis wird **ergaenzt**, nicht ersetzt.
+    #
+    # Ein Lauf ueber ein einzelnes Land schrieb sonst ein Verzeichnis mit neun Kacheln,
+    # waehrend 1373 auf der Platte lagen und weiter ausgeliefert wurden. Die Dateien
+    # waren unversehrt, aber das Verzeichnis log - und die App liest daraus, was es gibt
+    # und was ein Download kostet.
+    #
+    # Umgekehrt fliegen Eintraege raus, deren Datei nicht mehr da ist; sonst wuerde das
+    # Verzeichnis Kacheln versprechen, die niemand mehr ausliefern kann.
+    index_path = os.path.join(out_dir, "index.json")
+    merged = {}
+    if os.path.isfile(index_path):
+        try:
+            with open(index_path, encoding="utf-8") as fh:
+                merged = json.load(fh).get("tiles", {})
+        except (OSError, ValueError):
+            merged = {}
+    merged.update(index)
+    merged = {
+        k: v for k, v in merged.items()
+        if os.path.isfile(os.path.join(out_dir, f"{k}.json.gz"))
+    }
+    index = dict(sorted(merged.items()))
     total_bytes = sum(v["bytes"] for v in index.values())
 
-    with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8") as fh:
+    with open(index_path, "w", encoding="utf-8") as fh:
         json.dump(
             {
                 "version": 1,
@@ -255,7 +279,8 @@ def main() -> int:
             ensure_ascii=False,
         )
 
-    print(f"\n{len(index)} Kacheln, {total_kept} Objekte, {total_bytes / 1048576:.1f} MB")
+    print(f"\n{len(index)} Kacheln im Verzeichnis, {total_kept} Objekte verarbeitet, "
+          f"{total_bytes / 1048576:.1f} MB")
     return 0
 
 
