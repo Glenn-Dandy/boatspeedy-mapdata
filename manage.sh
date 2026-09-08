@@ -175,22 +175,30 @@ ein_land() {
 }
 
 gebiete() {
-    local t r name pbf size datum zw
-    t=$(printf '%-22s %9s %11s %6s' "Gebiet" "Rohdaten" "geholt am" "fertig")
-    t+=$'\n'"──────────────────────────────────────────────────────"
-    for r in $(regions); do
-        name=$(printf '%s' "$r" | tr '/' '_')
-        pbf="$WORK/$name.osm.pbf"
-        if [ -s "$pbf" ]; then
-            size=$(human "$(stat -c %s "$pbf")")
-            datum=$(date -d "@$(stat -c %Y "$pbf")" '+%d.%m.%Y' 2>/dev/null)
-        else
-            size="-"; datum="-"
-        fi
-        if [ -s "$GEO/$name.geojsonseq" ]; then zw="ja"; else zw="-"; fi
-        t+=$'\n'"$(printf '%-22s %9s %11s %6s' "${r#europe/}" "$size" "$datum" "$zw")"
-    done
-    "$UI" --title "$TITEL" --scrolltext --msgbox "$t" 24 64
+    # --textbox statt --msgbox: msgbox bricht den Inhalt um wie einen Fliesstext, und
+    # dabei zerfaellt jede Spaltenausrichtung. textbox zeigt eine Datei woertlich.
+    local f; f=$(mktemp)
+    {
+        printf '%-24s %9s %11s %7s\n' "Gebiet" "Rohdaten" "geholt am" "fertig"
+        printf '%s\n' "-------------------------------------------------------"
+        local r name pbf size datum zw
+        for r in $(regions); do
+            name=$(printf '%s' "$r" | tr '/' '_')
+            pbf="$WORK/$name.osm.pbf"
+            if [ -s "$pbf" ]; then
+                size=$(human "$(stat -c %s "$pbf")")
+                datum=$(date -d "@$(stat -c %Y "$pbf")" '+%d.%m.%Y' 2>/dev/null)
+            else
+                size="-"; datum="-"
+            fi
+            if [ -s "$GEO/$name.geojsonseq" ]; then zw="ja"; else zw="-"; fi
+            printf '%-24s %9s %11s %7s\n' "${r#europe/}" "$size" "$datum" "$zw"
+        done
+        printf '\n%s\n' "Ohne Rohdaten wird neu geladen, mit Rohdaten nur die Änderungen."
+        printf '%s\n' "\"fertig\" = verarbeitet; ein Lauf überspringt diese Gebiete."
+    } > "$f"
+    "$UI" --title "$TITEL — Gebiete" --textbox "$f" 24 62
+    rm -f "$f"
 }
 
 # Der Auslieferer ist der nginx, der die Kacheln herausgibt. Geprueft wird zuerst;
