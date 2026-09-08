@@ -1,17 +1,21 @@
 #!/bin/bash
-# Menü zur Verwaltung der Kartendaten — direkt auf dem Server, über SSH.
+# Verwaltung der Kartendaten — als Kastenoberfläche im Terminal.
 #
-# Der bewusst einfache Weg: Ein Adminbereich im Browser bräuchte Anmeldung, einen
-# eigenen Dienst und irgendeine Möglichkeit, einen Lauf zu starten — üblicherweise über
-# den Docker-Socket, was faktisch Root auf der Maschine bedeutet. Für einen Knopf, der
-# vielleicht viermal im Jahr gedrückt wird, ist das ein schlechtes Geschäft.
+# Bewusst kein Adminbereich im Browser: Der bräuchte Anmeldung, einen eigenen Dienst und
+# einen Weg, Läufe zu starten — üblicherweise über den Docker-Socket, was faktisch Root
+# auf der Maschine bedeutet. Für etwas, das ein paar Mal im Jahr gebraucht wird, ist das
+# ein schlechtes Geschäft.
 #
-# Geordnet nach dem, was man vorhat — nicht danach, wie es innen gebaut ist. Eine erste
-# Fassung hatte "Lauf starten" und "Aufräumen" getrennt, obwohl man für ein einzelnes
-# Land beides brauchte; das war von außen nicht zu erraten.
+# Benutzt `dialog`, wenn vorhanden — dann reagieren die Menüs auch auf die Maus —, sonst
+# `whiptail`, das auf Debian ohnehin dabei ist.  Für die Maus:  sudo apt install dialog
 #
 # Aufruf:  ./manage.sh
 set -u
+
+# Ohne UTF-8 zerfallen Umlaute, Haken und Balken in Einzelbytes, und whiptail verrechnet
+# sich bei den Spaltenbreiten — auf dem Server steht LANG=C. C.UTF-8 ist auf Debian
+# immer da und braucht keine erzeugten Sprachdateien.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 cd "$(dirname "$0")"
 
@@ -20,61 +24,63 @@ WORK=build/work
 GEO="$WORK/geojson"
 LOG=log/build.log
 
-B=$'\033[1m'; DIM=$'\033[2m'; R=$'\033[31m'; G=$'\033[32m'; Y=$'\033[33m'; N=$'\033[0m'
+if command -v dialog >/dev/null 2>&1; then
+    UI=dialog; MAUS=" (Maus)"
+elif command -v whiptail >/dev/null 2>&1; then
+    UI=whiptail; MAUS=""
+else
+    echo "Weder dialog noch whiptail vorhanden." >&2
+    exit 1
+fi
+TITEL="BoatSpeedy — Kartendaten"
 
 # ── Zustand ───────────────────────────────────────────────────────────────────
 
-running() { [ -n "$(docker ps --filter name=mapdata-build -q 2>/dev/null)" ]; }
-regions() { sed 's/#.*//' regions.txt | tr -d ' \t\r' | grep -v '^$'; }
-human()   { numfmt --to=iec --suffix=B "${1:-0}" 2>/dev/null || echo "${1:-0}B"; }
+running()   { [ -n "$(docker ps --filter name=mapdata-build -q 2>/dev/null)" ]; }
+regions()   { sed 's/#.*//' regions.txt | tr -d ' \t\r' | grep -v '^$'; }
+gesamt()    { regions | wc -l; }
+fertige()   { find "$GEO" -name '*.geojsonseq' 2>/dev/null | wc -l; }
+aktuelles() { grep '^== europe/' "$LOG" 2>/dev/null | tail -1 | sed 's/^== //; s/ ==$//; s|europe/||'; }
+schritt()   { grep -vE '^ (Container|Network|Image)|^#[0-9]|^ *$' "$LOG" 2>/dev/null | tail -1 | sed 's/^ *//'; }
+human()     { numfmt --to=iec --suffix=B "${1:-0}" 2>/dev/null || echo "${1:-0}B"; }
 
-# Wie weit ist der Vorgang? **Gezaehlt wird im Dateisystem, nicht im Protokoll.**
-# Das Protokoll waechst ueber Laeufe hinweg und meldete schon "71 von 48"; die
-# Zwischenergebnisse dagegen sind die Wahrheit: eine Datei je fertigem Gebiet.
-fertige()  { find "$GEO" -name '*.geojsonseq' 2>/dev/null | wc -l; }
-aktuelles() { grep '^== europe/' "$LOG" 2>/dev/null | tail -1 | sed 's/^== //; s/ ==$//'; }
-
-schritt() {  # die letzte inhaltliche Zeile, ohne Docker-Geplapper
-    grep -vE '^ (Container|Network|Image)|^#[0-9]|^ *$' "$LOG" 2>/dev/null | tail -1 | sed 's/^ *//'
-}
-
-kopf() {
-    local tiles=0 bytes=0 stand="—" pbfs pbfsize web="steht"
+lage() {
+    local tiles=0 stand="—" frei
     if [ -f "$DATA/index.json" ]; then
         tiles=$(find "$DATA" -name '*.json.gz' | wc -l)
-        bytes=$(du -sb "$DATA" 2>/dev/null | cut -f1)
         stand=$(sed -n 's/.*"generated":"\([^"]*\)".*/\1/p' "$DATA/index.json")
     fi
-    pbfs=$(find "$WORK" -maxdepth 1 -name '*.osm.pbf' 2>/dev/null | wc -l)
-    pbfsize=$(du -sb "$WORK" 2>/dev/null | cut -f1 || echo 0)
-    docker ps --filter name=mapdata-web --format '{{.Status}}' | grep -q . && web="läuft"
-
-    printf '\n %sBoatSpeedy — Kartendaten%s\n\n' "$B" "$N"
-    printf '   Ausgeliefert   %s Kacheln, %s, Stand %s\n' "$tiles" "$(human "$bytes")" "$stand"
-    printf '   Auslieferer    %s\n' "$web"
-    printf '   Rohdaten       %s von %s Gebieten, %s\n' \
-        "$pbfs" "$(regions | wc -l)" "$(human "$pbfsize")"
-    printf '   Platte         %s frei\n' "$(df -h . | awk 'NR==2{print $4}')"
-
+    frei=$(df -h . | awk 'NR==2{print $4}')
     if running; then
-        printf '\n   %sLäuft%s  %s von %s Gebieten — %s\n' \
-            "$Y" "$N" "$(fertige)" "$(regions | wc -l)" "$(aktuelles)"
-        printf '   %s%s%s\n' "$DIM" "$(schritt)" "$N"
+        printf 'Läuft: %s von %s Gebieten — %s\n%s Kacheln ausgeliefert, Stand %s · %s frei' \
+            "$(fertige)" "$(gesamt)" "$(aktuelles)" "$tiles" "$stand" "$frei"
+    else
+        printf 'Kein Vorgang aktiv\n%s Kacheln ausgeliefert, Stand %s · %s frei' \
+            "$tiles" "$stand" "$frei"
     fi
-    printf '\n'
+}
+
+msg()   { "$UI" --title "$TITEL" --msgbox "$1" "${2:-10}" 70; }
+frage() { "$UI" --title "$TITEL" --yesno "$1" "${2:-12}" 70; }
+
+# Reste eines abgebrochenen Downloads — aber nur, wenn gerade keiner lädt. Während eines
+# Laufs ist eine .part-Datei kein Rest, sondern der Download selbst.
+reste_weg() {
+    running && return 0
+    local n; n=$(find "$WORK" -maxdepth 1 -name '*.part' 2>/dev/null | wc -l)
+    [ "$n" -eq 0 ] && return 0
+    rm -f "$WORK"/*.part
+    msg "$n abgebrochener Download wurde entfernt.\n\nSolche Reste entstehen, wenn ein Lauf mitten im Herunterladen endet. Eine halbe Datei darf nie als gültiger Auszug durchgehen — deshalb wird sie beim Start weggeräumt." 11
 }
 
 # ── Läufe ─────────────────────────────────────────────────────────────────────
 
-starte() {  # $1 = optionale Gebietsdatei
+starte() {
     if running; then
-        printf '\n %sEs läuft schon einer.%s Zwei gleichzeitig schreiben in dasselbe\n' "$R" "$N"
-        printf ' Arbeitsverzeichnis und zerlegen sich gegenseitig die Daten.\n'
+        msg "Es läuft bereits ein Vorgang.\n\nZwei gleichzeitig schreiben in dasselbe Arbeitsverzeichnis und zerlegen sich gegenseitig die Daten." 10
         return 1
     fi
     mkdir -p log "$WORK" "$DATA"
-    # Frisches Protokoll je Lauf, das vorige bleibt als .1 liegen — sonst zählt der
-    # Fortschritt die Überschriften des letzten Laufs mit.
     [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
     local mount=""
     [ -n "${1:-}" ] && mount="-v $(readlink -f "$1"):/build/regions.txt:ro"
@@ -83,208 +89,184 @@ starte() {  # $1 = optionale Gebietsdatei
         </dev/null >/dev/null 2>&1 &
     sleep 6
     if running; then
-        printf '\n %sGestartet.%s Läuft weiter, auch wenn du dich abmeldest.\n' "$G" "$N"
-        printf ' Zusehen mit Punkt 4.\n'
+        zusehen
     else
-        printf '\n %sNicht angesprungen.%s Letzte Zeilen:\n' "$R" "$N"
-        tail -5 "$LOG" 2>/dev/null | sed 's/^/   /'
+        msg "Der Vorgang ist nicht angesprungen.\n\n$(tail -5 "$LOG" 2>/dev/null)" 14
     fi
 }
+
+abbrechen() {
+    running || { msg "Es läuft gerade nichts." 7; return; }
+    frage "Laufenden Vorgang abbrechen?\n\nFertige Gebiete bleiben erhalten — ein neuer Lauf macht dort weiter, wo dieser stand. Ein angefangener Download wird verworfen und beim nächsten Mal neu geholt." 12 || return
+    docker ps --filter name=mapdata-build -q | xargs -r docker rm -f >/dev/null 2>&1
+    sleep 2
+    rm -f "$WORK"/*.part
+    msg "Abgebrochen.\n\n$(fertige) von $(gesamt) Gebieten sind fertig und bleiben es." 9
+}
+
+# ── Fortschritt ───────────────────────────────────────────────────────────────
+
+zusehen() {
+    local total; total=$(gesamt)
+    local B=$'\033[1m' DIM=$'\033[2m' G=$'\033[32m' Y=$'\033[33m' N=$'\033[0m'
+    while true; do
+        clear 2>/dev/null || true
+        local d c; d=$(fertige); c=$(aktuelles)
+        if running; then
+            printf '\n %sLäuft%s   %s\n\n' "$Y" "$N" \
+                "$(docker ps --filter name=mapdata-build --format '{{.Status}}' | head -1)"
+        else
+            printf '\n %sKein Vorgang aktiv%s\n\n' "$G" "$N"
+        fi
+        local w=40 f i; f=$(( total > 0 ? d * w / total : 0 ))
+        printf ' ['
+        for ((i = 0; i < w; i++)); do
+            if [ "$i" -lt "$f" ]; then printf '█'; else printf '░'; fi
+        done
+        printf ']  %s/%s' "$d" "$total"
+        [ -n "$c" ] && printf '   %s%s%s' "$B" "$c" "$N"
+        printf '\n\n'
+        local r name mark col=0
+        for r in $(regions); do
+            name=$(printf '%s' "$r" | tr '/' '_')
+            if [ -s "$GEO/$name.geojsonseq" ]; then mark="$G✓$N"
+            elif [ "${r#europe/}" = "$c" ];     then mark="$Y▸$N"
+            else                                     mark="$DIM·$N"
+            fi
+            printf '  %b %-16.16s' "$mark" "${r#europe/}"
+            col=$((col + 1)); [ $((col % 4)) -eq 0 ] && printf '\n'
+        done
+        [ $((col % 4)) -ne 0 ] && printf '\n'
+        printf '\n %s%s%s\n\n' "$DIM" "$(schritt)" "$N"
+        printf ' %sTaste = zurück · a = abbrechen%s\n' "$DIM" "$N"
+        local k=""
+        if read -rsn1 -t 3 k; then
+            if [ "$k" = a ]; then abbrechen; continue; fi
+            return
+        fi
+    done
+}
+
+# ── Aktionen ──────────────────────────────────────────────────────────────────
 
 auffrischen() {
-    printf '\n %sAlles auffrischen%s\n\n' "$B" "$N"
-    printf ' Holt für jedes Gebiet nur die Änderungen seit dem letzten Mal und baut\n'
-    printf ' die Kacheln neu. Der übliche Fall.\n\n'
-    printf ' Bereits verarbeitete Gebiete werden übersprungen — für einen wirklichen\n'
-    printf ' Neuaufbau ist Punkt 3 zuständig.\n\n'
-    read -rp " Starten? [j/N] " j
-    [ "$j" = j ] || return
-    rm -rf "$GEO"      # sonst überspringt er alles und baut nur die Kacheln neu
-    starte ""
-}
-
-ein_land() {
-    printf '\n %sEin Land neu bauen%s\n\n' "$B" "$N"
-    printf ' Für den Fall, dass eines gefehlt hat oder veraltet ist. Das Land wird neu\n'
-    printf ' geholt und verarbeitet; die anderen bleiben, wie sie sind.\n\n'
-    printf ' %sDie Kacheln entstehen danach aus allen Gebieten neu — das dauert auch\n' "$DIM"
-    printf ' dann eine Weile, wenn nur ein Land verarbeitet wurde.%s\n\n' "$N"
-    printf ' Verfügbar: %s\n\n' "$(regions | sed 's|europe/||' | tr '\n' ' ' | fold -sw 68 | sed '2,$s/^/            /')"
-    read -rp " Welches? (leer = zurück) " g
-    [ -z "$g" ] && return
-    local voll="europe/$g"
-    if ! regions | grep -qx "$voll"; then
-        printf '\n %s%s steht nicht in der Gebietsliste.%s\n' "$R" "$voll" "$N"
-        return
-    fi
-    rm -f "$GEO/$(printf '%s' "$voll" | tr '/' '_').geojsonseq"
-    printf '%s\n' "$voll" > /tmp/mapdata-one.txt
-    starte /tmp/mapdata-one.txt
-}
-
-neuaufbau() {
-    printf '\n %sKomplett neu aufbauen%s\n\n' "$B" "$N"
-    printf ' Verwirft alle Zwischenergebnisse und verarbeitet jedes Gebiet von vorn.\n'
-    printf ' %sDauert Stunden.%s Die Rohdaten bleiben erhalten, es wird also nichts\n' "$Y" "$N"
-    printf ' neu heruntergeladen — nur neu gefiltert und geschnitten.\n\n'
-    printf ' Nötig, wenn sich am Filter oder am Kachelformat etwas geändert hat.\n\n'
-    read -rp " Wirklich? [j/N] " j
-    [ "$j" = j ] || return
+    frage "Auffrischen\n\nHolt für jedes Gebiet nur die Änderungen seit dem letzten Mal und baut die Kacheln neu. Der übliche Fall.\n\nDauer: gut eine Stunde, Download gering." 13 || return
     rm -rf "$GEO"
     starte ""
 }
 
-balken() {  # $1 = fertig, $2 = gesamt, $3 = Breite
-    local d=$1 t=$2 w=$3 f i
-    f=$(( t > 0 ? d * w / t : 0 ))
-    printf '['
-    for ((i = 0; i < w; i++)); do
-        if [ "$i" -lt "$f" ]; then printf '%s' "█"; else printf '%s' "░"; fi
-    done
-    printf ']'
+neuaufbau() {
+    frage "Komplett neu aufbauen\n\nVerarbeitet jedes Gebiet von vorn — nötig, wenn sich am Filter oder am Kachelformat etwas geändert hat.\n\nDauert Stunden. Die Rohdaten bleiben, es wird also fast nichts heruntergeladen." 14 || return
+    rm -rf "$GEO"
+    starte ""
 }
 
-gebietsraster() {  # zeigt alle Gebiete mit Zustand, vier je Zeile
-    local aktuell="$1" r name mark col=0
+ein_land() {
+    local liste=() r
+    for r in $(regions); do liste+=("${r#europe/}" ""); done
+    local g
+    g=$("$UI" --title "$TITEL" --menu \
+        "Ein Land neu holen und verarbeiten.\nDie anderen bleiben unberührt." \
+        20 60 12 "${liste[@]}" 3>&1 1>&2 2>&3) || return
+    [ -z "$g" ] && return
+    rm -f "$GEO/europe_$g.geojsonseq"
+    printf 'europe/%s\n' "$g" > /tmp/mapdata-one.txt
+    starte /tmp/mapdata-one.txt
+}
+
+gebiete() {
+    local t r name pbf size datum zw
+    t=$(printf '%-22s %9s %11s %6s' "Gebiet" "Rohdaten" "geholt am" "fertig")
+    t+=$'\n'"──────────────────────────────────────────────────────"
     for r in $(regions); do
         name=$(printf '%s' "$r" | tr '/' '_')
-        if [ -s "$GEO/$name.geojsonseq" ]; then
-            mark="$G✓$N"
-        elif [ "$r" = "$aktuell" ]; then
-            mark="$Y▸$N"
-        else
-            mark="$DIM·$N"
-        fi
-        printf '  %b %-16.16s' "$mark" "${r#europe/}"
-        col=$((col + 1))
-        [ $((col % 4)) -eq 0 ] && printf '\n'
-    done
-    [ $((col % 4)) -ne 0 ] && printf '\n'
-}
-
-zusehen() {
-    if [ ! -f "$LOG" ]; then printf '\n Noch kein Protokoll.\n'; return; fi
-    local total; total=$(regions | wc -l)
-    while true; do
-        clear 2>/dev/null || true
-        local d c seit
-        d=$(fertige); c=$(aktuelles)
-        if running; then
-            seit=$(docker ps --filter name=mapdata-build --format '{{.Status}}' | head -1)
-            printf '\n %sLauf läuft%s   %s\n\n' "$Y" "$N" "$seit"
-        else
-            printf '\n %sKein Lauf aktiv%s\n\n' "$G" "$N"
-        fi
-        printf ' '; balken "$d" "$total" 40
-        printf '  %s von %s' "$d" "$total"
-        [ -n "$c" ] && [ "$c" != "—" ] && printf '   %s%s%s' "$B" "${c#europe/}" "$N"
-        printf '\n\n'
-        gebietsraster "$c"
-        printf '\n %s%s%s\n\n' "$DIM" "$(schritt)" "$N"
-        printf ' %sBeliebige Taste zurück ins Menü (der Lauf läuft weiter).%s\n' "$DIM" "$N"
-        # -t wartet und bricht bei jedem Tastendruck ab: kein Strg-C nötig, und
-        # anders als ein trap kann man sich hier nicht festfahren.
-        read -rsn1 -t 3 _ && return
-    done
-}
-
-# ── Einzelnes ─────────────────────────────────────────────────────────────────
-
-einzeln() {
-    printf '\n %-26s %9s %11s %9s\n' "Gebiet" "Rohdaten" "geholt am" "verarbeitet"
-    printf ' %s\n' "──────────────────────────────────────────────────────────"
-    local r name pbf geoj size datum zw
-    for r in $(regions); do
-        name=$(printf '%s' "$r" | tr '/' '_')
-        pbf="$WORK/$name.osm.pbf"; geoj="$GEO/$name.geojsonseq"
+        pbf="$WORK/$name.osm.pbf"
         if [ -s "$pbf" ]; then
             size=$(human "$(stat -c %s "$pbf")")
             datum=$(date -d "@$(stat -c %Y "$pbf")" '+%d.%m.%Y' 2>/dev/null)
         else
-            # ASCII: printf zählt Bytes, ein Gedankenstrich sind drei — die Spalten
-            # verrutschen sonst genau bei den Zeilen, die auffallen sollen.
             size="-"; datum="-"
         fi
-        [ -s "$geoj" ] && zw="ja" || zw="-"
-        printf ' %-26s %9s %11s %9s\n' "${r#europe/}" "$size" "$datum" "$zw"
+        if [ -s "$GEO/$name.geojsonseq" ]; then zw="ja"; else zw="-"; fi
+        t+=$'\n'"$(printf '%-22s %9s %11s %6s' "${r#europe/}" "$size" "$datum" "$zw")"
     done
-    printf '\n %sOhne Rohdaten wird beim nächsten Lauf neu geladen; mit Rohdaten nur\n' "$DIM"
-    printf ' die Änderungen geholt.%s\n' "$N"
+    "$UI" --title "$TITEL" --scrolltext --msgbox "$t" 24 64
 }
 
 pruefen() {
-    printf '\n Auslieferer wird neu gestartet…\n'
     docker compose up -d --force-recreate mapdata-web >/dev/null 2>&1
     sleep 3
-    local port; port=$(grep -E '^MAPDATA_PORT=' .env 2>/dev/null | cut -d= -f2); port=${port:-8081}
-    local a b
-    a=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/healthz" || echo '---')
-    b=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/index.json" || echo '---')
-    printf '\n   /mapdata/healthz      %s\n   /mapdata/index.json   %s\n' "$a" "$b"
-    [ "$a$b" = "200200" ] && printf '\n %sAlles in Ordnung.%s\n' "$G" "$N" \
-                          || printf '\n %sEtwas stimmt nicht.%s\n' "$R" "$N"
-    printf '\n %sNach einem Lauf ist der Neustart nötig, wenn das Datenverzeichnis neu\n' "$DIM"
-    printf ' angelegt wurde: Eine Einhängung folgt dem Inode, nicht dem Pfad.%s\n' "$N"
+    local port a b
+    port=$(grep -E '^MAPDATA_PORT=' .env 2>/dev/null | cut -d= -f2); port=${port:-8081}
+    a=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/healthz" 2>/dev/null || echo '---')
+    b=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/mapdata/index.json" 2>/dev/null || echo '---')
+    if [ "$a$b" = "200200" ]; then
+        msg "Auslieferer neu gestartet — alles in Ordnung.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b" 11
+    else
+        msg "Auslieferer antwortet nicht richtig.\n\n  /mapdata/healthz      $a\n  /mapdata/index.json   $b" 11
+    fi
 }
 
 platz() {
-    local geo pbf
+    local geo pbf frei w
     geo=$(du -sh "$GEO" 2>/dev/null | cut -f1); geo=${geo:-0}
     pbf=$(du -ch "$WORK"/*.osm.pbf 2>/dev/null | tail -1 | cut -f1); pbf=${pbf:-0}
-    printf '\n %sPlatz freigeben%s        %s frei\n\n' "$B" "$N" "$(df -h . | awk 'NR==2{print $4}')"
-    printf '   1) Zwischenergebnisse   %-8s  gefahrlos, nächster Lauf macht sie neu\n' "$geo"
-    printf '   2) Rohdaten             %-8s  %skostet beim nächsten Lauf Gigabyte%s\n' "$pbf" "$Y" "$N"
-    printf '   3) Verwaiste Kacheln              Reste alter Läufe\n'
-    printf '   z) Zurück\n\n'
-    read -rp " > " w
+    frei=$(df -h . | awk 'NR==2{print $4}')
+    w=$("$UI" --title "$TITEL" --menu "Platz freigeben — $frei frei" 14 72 3 \
+        "1" "Zwischenergebnisse ($geo) — gefahrlos" \
+        "2" "Rohdaten ($pbf) — kostet 28 GB Download" \
+        "3" "Verwaiste Kacheln — Reste alter Läufe" \
+        3>&1 1>&2 2>&3) || return
     case "$w" in
-        1) read -rp " Löschen? [j/N] " j; [ "$j" = j ] && rm -rf "$GEO" && printf ' gelöscht\n' ;;
-        2) printf '\n %sDann werden beim nächsten Lauf alle Auszüge neu heruntergeladen —\n' "$Y"
-           printf ' zusammen rund 28 GB von Geofabrik. Genau das hat uns schon einmal\n'
-           printf ' eine Sperre eingebracht.%s\n\n' "$N"
-           read -rp " Trotzdem löschen? [j/N] " j
-           [ "$j" = j ] && rm -f "$WORK"/*.osm.pbf && printf ' gelöscht\n' ;;
+        1) frage "Zwischenergebnisse löschen?\n\nDer nächste Lauf erzeugt sie neu, ohne etwas herunterzuladen." 10 \
+               && { rm -rf "$GEO"; msg "Gelöscht." 7; } ;;
+        2) frage "Rohdaten wirklich löschen?\n\nDann lädt der nächste Lauf alle Auszüge neu — zusammen rund 28 GB von Geofabrik. Genau das hat schon einmal zu einer Sperre geführt." 12 \
+               && { rm -f "$WORK"/*.osm.pbf; msg "Gelöscht." 7; } ;;
         3) verwaiste ;;
-        *) : ;;
     esac
 }
 
 verwaiste() {
-    [ -f "$DATA/index.json" ] || { printf '\n Kein Verzeichnis vorhanden.\n'; return; }
+    [ -f "$DATA/index.json" ] || { msg "Kein Verzeichnis vorhanden." 7; return; }
     local n=0 f name
     for f in "$DATA"/*.json.gz; do
         [ -e "$f" ] || continue
         name=$(basename "$f" .json.gz)
         grep -q "\"$name\"" "$DATA/index.json" || { rm -f "$f"; n=$((n + 1)); }
     done
-    printf '\n %s verwaiste Kacheln gelöscht.\n' "$n"
+    msg "$n verwaiste Kacheln gelöscht." 7
 }
 
-# ── Menü ──────────────────────────────────────────────────────────────────────
+# ── Hauptschleife ─────────────────────────────────────────────────────────────
+
+reste_weg
 
 while true; do
-    clear 2>/dev/null || true
-    kopf
-    printf '   1  %sAuffrischen%s        nur Änderungen holen, Kacheln neu\n' "$B" "$N"
-    printf '   2  %sEin Land%s           eines neu holen und verarbeiten\n' "$B" "$N"
-    printf '   3  %sNeu aufbauen%s       alles von vorn, ohne Download (Stunden)\n' "$B" "$N"
-    printf '\n'
-    printf '   4  %sZusehen%s            Fortschritt des laufenden Vorgangs\n' "$B" "$N"
-    printf '   5  %sGebiete%s            was liegt da, wie alt\n' "$B" "$N"
-    printf '\n'
-    printf '   6  Auslieferer prüfen und neu starten\n'
-    printf '   7  Platz freigeben\n'
-    printf '   q  Beenden\n\n'
-    read -rp " > " wahl
-    case "$wahl" in
-        1) auffrischen; read -rp $'\n Weiter mit Eingabetaste… ' _ ;;
-        2) ein_land;    read -rp $'\n Weiter mit Eingabetaste… ' _ ;;
-        3) neuaufbau;   read -rp $'\n Weiter mit Eingabetaste… ' _ ;;
-        4) zusehen ;;
-        5) einzeln;     read -rp $'\n Weiter mit Eingabetaste… ' _ ;;
-        6) pruefen;     read -rp $'\n Weiter mit Eingabetaste… ' _ ;;
-        7) platz;       read -rp $'\n Weiter mit Eingabetaste… ' _ ;;
-        q|Q) printf '\n'; exit 0 ;;
-        *) : ;;
-    esac
+    if running; then
+        wahl=$("$UI" --title "$TITEL$MAUS" --menu "$(lage)" 18 74 5 \
+            "1" "Zusehen — Fortschritt" \
+            "2" "Abbrechen — Vorgang stoppen" \
+            "3" "Gebiete — Übersicht" \
+            "4" "Auslieferer prüfen und neu starten" \
+            "5" "Platz freigeben" \
+            3>&1 1>&2 2>&3) || break
+        case "$wahl" in
+            1) zusehen ;; 2) abbrechen ;; 3) gebiete ;; 4) pruefen ;; 5) platz ;;
+        esac
+    else
+        wahl=$("$UI" --title "$TITEL$MAUS" --menu "$(lage)" 19 74 6 \
+            "1" "Auffrischen — nur Änderungen holen" \
+            "2" "Ein Land — gezielt neu holen" \
+            "3" "Neu aufbauen — alles, ohne Download" \
+            "4" "Gebiete — Übersicht" \
+            "5" "Auslieferer prüfen" \
+            "6" "Platz freigeben" \
+            3>&1 1>&2 2>&3) || break
+        case "$wahl" in
+            1) auffrischen ;; 2) ein_land ;; 3) neuaufbau ;;
+            4) gebiete ;; 5) pruefen ;; 6) platz ;;
+        esac
+    fi
 done
+
+clear 2>/dev/null || true
