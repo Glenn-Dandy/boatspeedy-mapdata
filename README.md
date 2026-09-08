@@ -70,6 +70,21 @@ curl http://127.0.0.1:8081/index.json     # Verzeichnis der Kacheln
 Von außen erreichbar wird er über den Reverse-Proxy, als Unterpfad `/mapdata/` der
 Projektseite.
 
+### Verwalten
+
+`./manage.sh` ist ein Menü auf dem Server — Gebiete im Einzelnen ansehen, einen Lauf
+starten (alle oder eines), das Protokoll mitlesen, aufräumen, den Auslieferer neu
+starten.
+
+Bewusst als Shell-Skript und nicht als Adminbereich im Browser: Ein Knopf im Netz
+bräuchte Anmeldung, einen eigenen Dienst und einen Weg, einen Lauf zu starten —
+üblicherweise über den Docker-Socket, was faktisch Root auf der Maschine bedeutet. Für
+etwas, das ein paar Mal im Jahr gebraucht wird, ist das ein schlechtes Geschäft.
+
+Das Menü weigert sich, einen zweiten Lauf zu starten, solange einer aktiv ist: Zwei
+schreiben in dasselbe Arbeitsverzeichnis und zerlegen sich gegenseitig die Daten. Läufe
+werden mit `setsid` gestartet und laufen weiter, wenn die Sitzung endet.
+
 ### Auffrischen
 
 `./update.sh` erzeugt alles neu und startet den Auslieferer durch. Als Cron-Eintrag
