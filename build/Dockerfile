@@ -1,5 +1,5 @@
 # Enthält nur, was zum Filtern und Schneiden gebraucht wird: osmium-tool für die
-# OSM-Auszüge, Python für die Kacheln, curl zum Holen. Kein Dienst, kein Netzwerk-
+# OSM-Auszüge, pyosmium für die Änderungsströme, Python für die Kacheln, curl zum Holen. Kein Dienst, kein Netzwerk-
 # Zuhörer — der Container läuft einmal durch und beendet sich.
 FROM debian:trixie-slim
 
@@ -7,6 +7,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       osmium-tool \
       python3 \
+      pyosmium \
       ca-certificates \
       curl \
  && rm -rf /var/lib/apt/lists/*

@@ -73,20 +73,38 @@ Projektseite.
 ### Auffrischen
 
 `./update.sh` erzeugt alles neu und startet den Auslieferer durch. Als Cron-Eintrag
-gedacht — **monatlich reicht**, und mehr wäre unhöflich: Jeder Lauf lädt mehrere
-Gigabyte von Geofabrik. Wasserwege ändern sich in Monaten kaum; bei Wehren und
-Sperrungen reden wir über Jahre.
+gedacht; wie oft, ist inzwischen keine Kostenfrage mehr (siehe unten).
 
-### Bereits geholte Auszüge
+### Aktualisiert wird, nicht neu geladen
 
-Ein Auszug, der schon auf der Platte liegt und **jünger als 30 Tage** ist, wird
-wiederverwendet statt neu geholt. Das ist keine Bequemlichkeit, sondern Rücksicht:
-Beim Suchen zweier Fehler kamen an einem Tag vier volle Deutschland-Downloads zusammen,
-rund 20 GB — danach wies Geofabriks Proxy jeden weiteren mit einem sofortigen 502 ab und
-ein ganzer Europa-Lauf scheiterte an allen Gebieten.
+Ein einmal geholter Auszug wird **behalten** und bei jedem weiteren Lauf über
+Geofabriks Änderungsstrom auf Stand gebracht, statt neu geladen zu werden. Die Auszüge
+tragen im Kopf, wo ihr Strom liegt und auf welchem Stand sie sind
+(`osmosis_replication_base_url`, `osmosis_replication_sequence_number`);
+`pyosmium-up-to-date` holt daraufhin nur die Tagesdifferenzen.
 
-Mit `MAX_AGE_DAYS` lässt sich die Frist ändern, mit `KEEP_PBF=1` bleiben die Auszüge
-nach dem Filtern liegen.
+| | Tagesdifferenz | Vollauszug |
+|---|---|---|
+| Luxemburg | 21–236 kB | 47 MB |
+| Deutschland | 6,2 MB | 4,8 GB |
+
+Bei monatlichem Auffrischen ist das für Deutschland der Faktor siebenundzwanzig. Ganz
+Europa liegt damit als rund 28 GB auf der Platte — dafür lädt ein Lauf danach fast
+nichts mehr, und die Daten dürfen ruhig öfter frisch geholt werden.
+
+Das ist keine Bequemlichkeit, sondern Rücksicht: Beim Suchen zweier Fehler kamen an
+einem Tag vier volle Deutschland-Downloads zusammen, rund 20 GB — danach wies Geofabriks
+Proxy jeden weiteren mit einem sofortigen 502 ab, und ein ganzer Europa-Lauf scheiterte
+an allen Gebieten.
+
+Scheitert die Aktualisierung, wird der vorhandene Auszug weiterbenutzt — er ist dann nur
+älter, nicht kaputt. Erst wenn er die Altersgrenze von `MAX_AGE_DAYS` (180) reißt, wird
+doch neu geladen. `KEEP_PBF=0` löscht die Auszüge wie früher sofort nach dem Filtern.
+
+### Wiederaufnahme
+
+Ein abgebrochener Lauf wird beim nächsten Aufruf dort fortgesetzt, wo er stand: Länder
+mit vorhandenem Zwischenergebnis werden übersprungen. `FRESH=1` fängt von vorn an.
 
 ### Platzbedarf
 
