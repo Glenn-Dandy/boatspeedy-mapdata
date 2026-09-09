@@ -37,7 +37,7 @@ stand() {
 
 mkdir -p "$WORK" "$OUT"
 # Halbe Downloads eines abgebrochenen Laufs wegräumen.
-rm -f "$WORK"/*.part
+rm -f "$WORK"/*.part "$WORK"/*.new.osm.pbf
 GEO="$WORK/geojson"
 # Die Zwischenergebnisse der Länder bleiben **liegen**. Damit ist der Lauf
 # wiederaufnehmbar: Bricht er bei Land dreißig ab — Netz weg, Sperre, Neustart —, macht
@@ -78,6 +78,9 @@ while IFS= read -r line; do
 
     name=$(printf '%s' "$region" | tr '/' '_')
     pbf="$WORK/$name.osm.pbf"
+    # Zwischenstand der Aktualisierung. Die Endung .osm.pbf ist Pflicht, nicht Geschmack:
+    # osmium bestimmt das Format daran.
+    neu="$WORK/$name.new.osm.pbf"
     small="$WORK/$name.water.pbf"
 
     echo "== $region =="
@@ -125,23 +128,31 @@ while IFS= read -r line; do
                 # ungleich null das ganze Skript beenden, und 1 heisst bei diesem Werkzeug
                 # nicht "Fehler", sondern "es gibt noch mehr".
                 rc=0
-                pyosmium-up-to-date --size 2000 -o "$pbf.new" "$pbf" >"$ERRLOG" 2>&1 || rc=$?
+                # **Die Ausgabedatei muss auf .osm.pbf enden.** osmium erkennt das Format
+                # an der Endung; hiess sie frueher "….osm.pbf.new", endete sie auf .new,
+                # und pyosmium brach mit "Could not detect file format" ab — noch bevor es
+                # etwas geschrieben hatte. Aufgefallen ist das nie, weil der haeufigste
+                # Fall "war schon aktuell" gar keine Ausgabedatei anlegt und deshalb
+                # durchlaeuft. Die Differenzen wurden damit **nie** angewandt; auf Stand
+                # kamen die Auszuege allein durch die vollen Downloads.
+                rm -f "$neu"
+                pyosmium-up-to-date --size 2000 -o "$neu" "$pbf" >"$ERRLOG" 2>&1 || rc=$?
                 if [ "$rc" -eq 0 ]; then
                     # Rueckgabe 0 heisst "jetzt aktuell" - das schliesst "war schon aktuell"
                     # ein, und dann wird gar keine Ausgabedatei geschrieben. Ein blindes mv
                     # scheitert hier und beendet mit set -e den ganzen Lauf.
-                    if [ -s "$pbf.new" ]; then
-                        mv -f "$pbf.new" "$pbf"
+                    if [ -s "$neu" ]; then
+                        mv -f "$neu" "$pbf"
                     fi
-                    rm -f "$pbf.new"
+                    rm -f "$neu"
                     updated=1
                     break
-                elif [ "$rc" -eq 1 ] && [ -s "$pbf.new" ]; then
+                elif [ "$rc" -eq 1 ] && [ -s "$neu" ]; then
                     # Teilstueck angewandt, es fehlt noch etwas - naechste Runde.
-                    mv -f "$pbf.new" "$pbf"
+                    mv -f "$neu" "$pbf"
                     printf '  Aktualisierung: Teilstueck %s angewandt, es folgt mehr\n' "$round"
                 else
-                    rm -f "$pbf.new"
+                    rm -f "$neu"
                     grund=$(grep -v '^ *$' "$ERRLOG" 2>/dev/null | tail -1 | cut -c1-160)
                     break
                 fi
