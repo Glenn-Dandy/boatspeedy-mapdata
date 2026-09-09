@@ -147,6 +147,79 @@ zusehen() {
     done
 }
 
+# ── Aktueller Lauf ────────────────────────────────────────────────────────────
+
+# Was der Lauf gerade tut und was er bisher getan hat — als Seite zum Lesen.
+#
+# `zusehen` daneben ist der laufende Blick; das hier ist der Bericht. Er beantwortet die
+# Frage, die vorher niemand beantworten konnte: Ist bei diesem Lauf ueberhaupt etwas
+# Neues hereingekommen? Ein Lauf meldete "Fertig", obwohl die Aktualisierung
+# fehlgeschlagen war und alles aus dem alten Auszug geschnitten wurde.
+lauf_bericht() {
+    local d c
+    d=$(fertige); c=$(aktuelles)
+    printf 'Stand dieser Ansicht: %s\n' "$(date '+%d.%m.%Y %H:%M:%S')"
+    printf '%s\n' "-------------------------------------------------------------"
+    if running; then
+        printf 'Vorgang:   laeuft, %s\n' \
+            "$(docker ps --filter name=mapdata-build --format '{{.Status}}' | head -1)"
+        printf 'Gebiet:    %s   (%s von %s fertig)\n' "${c:-—}" "$d" "$(gesamt)"
+        printf 'Schritt:   %s\n' "$(schritt)"
+    else
+        printf 'Vorgang:   keiner aktiv   (%s von %s Gebieten verarbeitet)\n' "$d" "$(gesamt)"
+    fi
+    printf '\n'
+
+    # Was die Aktualisierung je Gebiet ergeben hat. Genau das fehlte: "Fertig" sagt
+    # nichts darueber, ob neue Daten hereinkamen.
+    printf 'Aktualisierung in diesem Lauf\n'
+    printf '%s\n' "-------------------------------------------------------------"
+    if [ -f "$LOG" ]; then
+        awk '
+            /^== europe\// { gebiet = $2; sub(/europe\//, "", gebiet); next }
+            /^  Stand: / { sub(/^  Stand: /, ""); vorher[gebiet] = $0; next }
+            /^  Aktualisierung: fertig, jetzt / {
+                sub(/^  Aktualisierung: fertig, jetzt /, "")
+                if ($0 == vorher[gebiet]) zustand[gebiet] = "unveraendert  " $0
+                else                      zustand[gebiet] = "NEU           " $0
+                if (!(gebiet in gesehen)) { gesehen[gebiet] = 1; reihe[++n] = gebiet }
+                next
+            }
+            /^  Aktualisierung: FEHLGESCHLAGEN/ {
+                zustand[gebiet] = "FEHLER        " vorher[gebiet]
+                if (!(gebiet in gesehen)) { gesehen[gebiet] = 1; reihe[++n] = gebiet }
+                next
+            }
+            /^  Grund: / { sub(/^  Grund: /, ""); grund[gebiet] = $0; next }
+            END {
+                if (n == 0) { print "  (noch nichts)"; exit }
+                for (i = 1; i <= n; i++) {
+                    g = reihe[i]
+                    printf "  %-22.22s %s\n", g, zustand[g]
+                    if (grund[g] != "") printf "  %-22.22s   %s\n", "", grund[g]
+                }
+            }' "$LOG"
+    else
+        printf '  (kein Protokoll)\n'
+    fi
+    printf '\n'
+    printf 'Letzte Zeilen\n'
+    printf '%s\n' "-------------------------------------------------------------"
+    grep -vE '^ (Container|Network|Image)|^#[0-9]' "$LOG" 2>/dev/null | tail -12 | sed 's/^/  /'
+}
+
+lauf() {
+    local f; f=$(mktemp)
+    lauf_bericht > "$f"
+    # --textbox statt --msgbox: msgbox bricht um wie Fliesstext und zerlegt dabei jede
+    # Spaltenausrichtung.
+    "$UI" --title "$TITEL — Aktueller Lauf" --textbox "$f" 24 78
+    rm -f "$f"
+    if running; then
+        frage "Laufend mitverfolgen?\n\nDie Ansicht frischt sich alle drei Sekunden auf; jede Taste bringt dich zurueck." 10 && zusehen
+    fi
+}
+
 # ── Aktionen ──────────────────────────────────────────────────────────────────
 
 auffrischen() {
@@ -293,28 +366,31 @@ reste_weg
 
 while true; do
     if running; then
-        wahl=$("$UI" --title "$TITEL$MAUS" --menu "$(lage)" 18 74 5 \
-            "1" "Zusehen — Fortschritt" \
-            "2" "Abbrechen — Vorgang stoppen" \
-            "3" "Gebiete — Übersicht" \
-            "4" "Auslieferer prüfen" \
-            "5" "Platz freigeben" \
-            3>&1 1>&2 2>&3) || break
-        case "$wahl" in
-            1) zusehen ;; 2) abbrechen ;; 3) gebiete ;; 4) pruefen ;; 5) platz ;;
-        esac
-    else
         wahl=$("$UI" --title "$TITEL$MAUS" --menu "$(lage)" 19 74 6 \
-            "1" "Auffrischen — nur Änderungen holen" \
-            "2" "Gebiete auffrischen — gezielt auswählen" \
-            "3" "Neu aufbauen — alles, ohne Download" \
+            "1" "Aktueller Lauf — was gerade passiert" \
+            "2" "Zusehen — Fortschritt laufend" \
+            "3" "Abbrechen — Vorgang stoppen" \
             "4" "Gebiete — Übersicht" \
             "5" "Auslieferer prüfen" \
             "6" "Platz freigeben" \
             3>&1 1>&2 2>&3) || break
         case "$wahl" in
-            1) auffrischen ;; 2) laender ;; 3) neuaufbau ;;
+            1) lauf ;; 2) zusehen ;; 3) abbrechen ;;
             4) gebiete ;; 5) pruefen ;; 6) platz ;;
+        esac
+    else
+        wahl=$("$UI" --title "$TITEL$MAUS" --menu "$(lage)" 20 74 7 \
+            "1" "Auffrischen — nur Änderungen holen" \
+            "2" "Gebiete auffrischen — gezielt auswählen" \
+            "3" "Neu aufbauen — alles, ohne Download" \
+            "4" "Letzter Lauf — was dabei herauskam" \
+            "5" "Gebiete — Übersicht" \
+            "6" "Auslieferer prüfen" \
+            "7" "Platz freigeben" \
+            3>&1 1>&2 2>&3) || break
+        case "$wahl" in
+            1) auffrischen ;; 2) laender ;; 3) neuaufbau ;; 4) lauf ;;
+            5) gebiete ;; 6) pruefen ;; 7) platz ;;
         esac
     fi
 done

@@ -19,6 +19,21 @@ BASE=${BASE:-https://download.geofabrik.de}
 # Fehlersuche, ein zweiter Anlauf nach einem Ausfall, auch ein monatlicher Cron-Lauf —
 # kostet damit keine fremde Bandbreite mehr.
 MAX_AGE_DAYS=${MAX_AGE_DAYS:-180}
+# So oft wird die Aktualisierung versucht, bevor der alte Auszug genommen wird. Ein
+# Netzhaenger bei Geofabrik ist damit erledigt, statt einen ganzen Lauf wertlos zu machen.
+UPDATE_TRIES=${UPDATE_TRIES:-3}
+UPDATE_PAUSE=${UPDATE_PAUSE:-20}
+ERRLOG=$(mktemp)
+trap 'rm -f "$ERRLOG"' EXIT
+
+# Auf welchem Stand ein Auszug ist. Nur der Kopf wird gelesen - eine halbe Sekunde, auch
+# bei fuenf Gigabyte. Damit kann jeder Schritt sagen, woran er gerade ist.
+stand() {
+    osmium fileinfo "$1" 2>/dev/null | awk -F= '
+        /osmosis_replication_sequence_number/ { s = $2 }
+        /osmosis_replication_timestamp/       { t = $2 }
+        END { if (s == "") print "unbekannt"; else printf "%s vom %s", s, t }'
+}
 
 mkdir -p "$WORK" "$OUT"
 # Halbe Downloads eines abgebrochenen Laufs wegräumen.
@@ -51,6 +66,7 @@ NOTICES='n/seamark:type'
 
 count=0
 failed=""
+nicht_aktuell=""
 while IFS= read -r line; do
     region=$(printf '%s' "$line" | sed 's/#.*//' | tr -d ' \t\r')
     [ -z "$region" ] && continue
@@ -77,44 +93,69 @@ while IFS= read -r line; do
     # Scheitert das, ist der vorhandene Auszug immer noch brauchbar, nur älter. Erst wenn
     # er die Altersgrenze reißt, wird neu geladen.
     if [ -s "$pbf" ]; then
-        echo "  auf Stand bringen"
+        printf '  Stand: %s\n' "$(stand "$pbf")"
+        echo "  Aktualisierung: laeuft"
         updated=0
-        # Rückgabe 0 = fertig, 1 = es gibt noch mehr (Größenbegrenzung erreicht),
-        # alles andere ist ein Fehler. Deshalb in Runden, aber nicht endlos.
-        round=0
-        while [ "$round" -lt 8 ]; do
-            round=$((round + 1))
-            # `|| rc=$?` ist hier wesentlich: Mit `set -e` würde ein Rückgabewert
-            # ungleich null das ganze Skript beenden, und 1 heißt bei diesem Werkzeug
-            # nicht „Fehler", sondern „es gibt noch mehr".
-            rc=0
-            pyosmium-up-to-date --size 2000 -o "$pbf.new" "$pbf" >/dev/null 2>&1 || rc=$?
-            if [ "$rc" -eq 0 ]; then
-                # Rueckgabe 0 heisst "jetzt aktuell" - das schliesst "war schon aktuell"
-                # ein, und dann wird gar keine Ausgabedatei geschrieben. Ein blindes mv
-                # scheitert hier und beendet mit set -e den ganzen Lauf.
-                if [ -s "$pbf.new" ]; then
-                    mv -f "$pbf.new" "$pbf"
-                fi
-                rm -f "$pbf.new"
-                updated=1
-                break
-            elif [ "$rc" -eq 1 ] && [ -s "$pbf.new" ]; then
-                # Teilstück angewandt, es fehlt noch etwas — nächste Runde.
-                mv -f "$pbf.new" "$pbf"
-            else
-                rm -f "$pbf.new"
-                break
+        grund=""
+        # **Mehr als ein Versuch, und der Fehler wird nicht weggeworfen.**
+        #
+        # Vorher ging die Fehlerausgabe nach /dev/null, uebrig blieb "Aktualisierung
+        # fehlgeschlagen" ohne Grund — und der Lauf machte mit dem alten Auszug weiter,
+        # schnitt alle Kacheln und meldete "Fertig". Von aussen ein geglueckter Lauf, nur
+        # ohne neue Daten. Genau das ist passiert: ein voruebergehender Fehler, und
+        # niemand konnte sehen, welcher.
+        versuch=0
+        while [ "$versuch" -lt "$UPDATE_TRIES" ]; do
+            versuch=$((versuch + 1))
+            if [ "$versuch" -gt 1 ]; then
+                printf '  Aktualisierung: Versuch %s von %s\n' "$versuch" "$UPDATE_TRIES"
+                sleep "$UPDATE_PAUSE"
             fi
+            # Rueckgabe 0 = fertig, 1 = es gibt noch mehr (Groessenbegrenzung erreicht),
+            # alles andere ist ein Fehler. Deshalb in Runden, aber nicht endlos.
+            round=0
+            while [ "$round" -lt 8 ]; do
+                round=$((round + 1))
+                # `|| rc=$?` ist hier wesentlich: Mit `set -e` wuerde ein Rueckgabewert
+                # ungleich null das ganze Skript beenden, und 1 heisst bei diesem Werkzeug
+                # nicht "Fehler", sondern "es gibt noch mehr".
+                rc=0
+                pyosmium-up-to-date --size 2000 -o "$pbf.new" "$pbf" >"$ERRLOG" 2>&1 || rc=$?
+                if [ "$rc" -eq 0 ]; then
+                    # Rueckgabe 0 heisst "jetzt aktuell" - das schliesst "war schon aktuell"
+                    # ein, und dann wird gar keine Ausgabedatei geschrieben. Ein blindes mv
+                    # scheitert hier und beendet mit set -e den ganzen Lauf.
+                    if [ -s "$pbf.new" ]; then
+                        mv -f "$pbf.new" "$pbf"
+                    fi
+                    rm -f "$pbf.new"
+                    updated=1
+                    break
+                elif [ "$rc" -eq 1 ] && [ -s "$pbf.new" ]; then
+                    # Teilstueck angewandt, es fehlt noch etwas - naechste Runde.
+                    mv -f "$pbf.new" "$pbf"
+                    printf '  Aktualisierung: Teilstueck %s angewandt, es folgt mehr\n' "$round"
+                else
+                    rm -f "$pbf.new"
+                    grund=$(grep -v '^ *$' "$ERRLOG" 2>/dev/null | tail -1 | cut -c1-160)
+                    break
+                fi
+            done
+            [ "$updated" = "1" ] && break
         done
 
         if [ "$updated" = "1" ]; then
-            printf '  aktuell (%s), kein Vollauszug nötig\n' "$(du -h "$pbf" | cut -f1)"
-        elif [ -n "$(find "$pbf" -mtime "+$MAX_AGE_DAYS" 2>/dev/null)" ]; then
-            echo "  Aktualisierung fehlgeschlagen und zu alt — wird neu geholt" >&2
-            rm -f "$pbf"
+            printf '  Aktualisierung: fertig, jetzt %s\n' "$(stand "$pbf")"
         else
-            echo "  Aktualisierung fehlgeschlagen, vorhandener Auszug wird genommen" >&2
+            printf '  Aktualisierung: FEHLGESCHLAGEN nach %s Versuchen\n' "$versuch" >&2
+            if [ -n "$grund" ]; then printf '  Grund: %s\n' "$grund" >&2; fi
+            nicht_aktuell="$nicht_aktuell $region"
+            if [ -n "$(find "$pbf" -mtime "+$MAX_AGE_DAYS" 2>/dev/null)" ]; then
+                echo "  Auszug ist zu alt - wird neu geholt" >&2
+                rm -f "$pbf"
+            else
+                printf '  Weiter mit dem vorhandenen Auszug (Stand %s)\n' "$(stand "$pbf")" >&2
+            fi
         fi
     fi
 
@@ -139,11 +180,11 @@ while IFS= read -r line; do
     printf '  %s\n' "$(du -h "$pbf" | cut -f1) geladen"
     fi
 
-    echo "  filtern"
+    echo "  Filtern: laeuft"
     # Die Knoten der gefundenen Wege kommen mit, sonst hätten wir Linien ohne Punkte.
     osmium tags-filter --overwrite -o "$small" "$pbf" \
         "$WAYS" "$NODES" "$BARRIERS" "$NOTICES"
-    printf '  %s\n' "$(du -h "$small" | cut -f1) nach dem Filtern"
+    printf '  Filtern: fertig, %s\n' "$(du -h "$small" | cut -f1)"
 
     # Die Auszüge bleiben **liegen**. Ganz Europa sind rund 28 GB — auf einer 48-GB-Platte
     # tragbar, und der Gegenwert ist, dass ein weiterer Lauf innerhalb des halben Jahres
@@ -151,7 +192,7 @@ while IFS= read -r line; do
     # falls der Platz doch knapp wird.
     [ "${KEEP_PBF:-1}" = "1" ] || rm -f "$pbf"
 
-    echo "  ausgeben"
+    echo "  Ausgeben: laeuft"
     osmium export --overwrite -f geojsonseq --add-unique-id=type_id \
         -o "$GEO/$name.geojsonseq" "$small"
     rm -f "$small"
@@ -164,6 +205,14 @@ done < "$REGIONS"
 if [ "$count" -eq 0 ]; then
     echo "Keine Gebiete in $REGIONS — nichts zu tun." >&2
     exit 1
+fi
+
+if [ -n "$nicht_aktuell" ]; then
+    echo
+    echo "== ACHTUNG: nicht aktualisierte Gebiete ==" >&2
+    for f in $nicht_aktuell; do echo "  $f" >&2; done
+    echo "  Diese wurden aus dem vorhandenen Auszug geschnitten - die Kacheln sind" >&2
+    echo "  also unveraendert. Lauf spaeter wiederholen." >&2
 fi
 
 if [ -n "$failed" ]; then
