@@ -56,6 +56,11 @@ mkdir -p "$GEO"
 # nur darüber, welche Verbote gelten (boat=no, motorboat=no, canoe=no) — und das wertet
 # die App aus den Merkmalen aus, die hier ohnehin mitkommen.
 WAYS='w/waterway=river,canal,fairway'
+# Schleusen liegen in OSM meist als **Weg** vor, nicht als Knoten: die Kammer als
+# waterway=canal mit lock=yes, die Tore als eigene kurze Wege. Die Knotenfassung unten
+# gibt es auch, aber bei der Schleuse Wettin etwa ist alles Weg — und damit fiel sie
+# vollstaendig aus den Kacheln, samt Name, Oeffnungszeiten und Telefon.
+LOCKWAYS='w/lock=yes w/waterway=lock_gate'
 # Was den Weg versperrt, und die Hinweiszeichen mit ihren Werten.
 NODES='n/waterway=lock_gate,weir,dam,sluice_gate'
 BARRIERS='n/barrier=no_entry,prohibition,lock_gate'
@@ -182,8 +187,9 @@ while IFS= read -r line; do
 
     echo "  Filtern: laeuft"
     # Die Knoten der gefundenen Wege kommen mit, sonst hätten wir Linien ohne Punkte.
+    # shellcheck disable=SC2086
     osmium tags-filter --overwrite -o "$small" "$pbf" \
-        "$WAYS" "$NODES" "$BARRIERS" "$NOTICES"
+        "$WAYS" $LOCKWAYS "$NODES" "$BARRIERS" "$NOTICES"
     printf '  Filtern: fertig, %s\n' "$(du -h "$small" | cut -f1)"
 
     # Die Auszüge bleiben **liegen**. Ganz Europa sind rund 28 GB — auf einer 48-GB-Platte

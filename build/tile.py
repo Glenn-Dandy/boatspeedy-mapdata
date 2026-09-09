@@ -34,6 +34,12 @@ from collections import OrderedDict
 KEEP_WAY = (
     "waterway", "name",
     "boat", "motorboat", "ship", "canoe", "access", "tunnel",
+    # Schleusen. Sie stehen in OSM als Weg — die Kammer als `waterway=canal` mit
+    # `lock=yes`, die Tore als kurze Wege mit `waterway=lock_gate`. Ohne diese Merkmale
+    # lag die Schleuse Wettin zwar in der Kachel, aber als namenloser 111-Meter-Kanal:
+    # keine Öffnungszeiten, keine Nummer, und im Routing tauchte sie gar nicht auf.
+    "lock", "lock_name", "opening_hours", "phone", "vhf",
+    "maxlength", "maxwidth", "CEMT", "ref",
 )
 KEEP_NODE = (
     "waterway", "barrier", "name",
