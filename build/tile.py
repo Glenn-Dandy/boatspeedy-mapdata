@@ -38,7 +38,9 @@ KEEP_WAY = (
     # `lock=yes`, die Tore als kurze Wege mit `waterway=lock_gate`. Ohne diese Merkmale
     # lag die Schleuse Wettin zwar in der Kachel, aber als namenloser 111-Meter-Kanal:
     # keine Öffnungszeiten, keine Nummer, und im Routing tauchte sie gar nicht auf.
-    "lock", "lock_name", "opening_hours", "phone", "vhf",
+    # `service_times` neben `opening_hours`: Beides ist bei Schleusen verbreitet, und wer
+    # nur eines holt, liefert die Hälfte ohne Zeiten aus.
+    "lock", "lock_name", "opening_hours", "service_times", "phone", "vhf",
     "maxlength", "maxwidth", "CEMT", "ref",
 )
 KEEP_NODE = (
