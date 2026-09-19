@@ -137,7 +137,14 @@ def collect(path: str, buckets: Buckets) -> tuple[int, int]:
 
             if gtype == "LineString":
                 tags = {k: v for k, v in props.items() if k in KEEP_WAY}
-                if not tags.get("waterway"):
+                # Die Schleusenkammer als Seezeichen. Sie hat oft kein `waterway`,
+                # und Name und Maße stehen unter `seamark:` — die kommen dann mit.
+                basin = props.get("seamark:type") == "lock_basin"
+                if basin:
+                    tags.update(
+                        {k: v for k, v in props.items() if k.startswith(SEAMARK_PREFIX)}
+                    )
+                if not tags.get("waterway") and not basin:
                     skipped += 1
                     continue
                 # GeoJSON zählt Länge vor Breite — hier andersherum, wie bei Overpass.

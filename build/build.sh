@@ -60,7 +60,8 @@ WAYS='w/waterway=river,canal,fairway'
 # waterway=canal mit lock=yes, die Tore als eigene kurze Wege. Die Knotenfassung unten
 # gibt es auch, aber bei der Schleuse Wettin etwa ist alles Weg — und damit fiel sie
 # vollstaendig aus den Kacheln, samt Name, Oeffnungszeiten und Telefon.
-LOCKWAYS='w/lock=yes w/waterway=lock_gate'
+# Manche Kammern tragen nur das Seezeichen seamark:type=lock_basin, ohne lock=yes.
+LOCKWAYS='w/lock=yes w/waterway=lock_gate w/seamark:type=lock_basin'
 # Was den Weg versperrt, und die Hinweiszeichen mit ihren Werten.
 NODES='n/waterway=lock_gate,weir,dam,sluice_gate'
 BARRIERS='n/barrier=no_entry,prohibition,lock_gate'
