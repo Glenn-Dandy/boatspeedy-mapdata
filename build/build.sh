@@ -62,6 +62,15 @@ WAYS='w/waterway=river,canal,fairway'
 # vollstaendig aus den Kacheln, samt Name, Oeffnungszeiten und Telefon.
 # Manche Kammern tragen nur das Seezeichen seamark:type=lock_basin, ohne lock=yes.
 LOCKWAYS='w/lock=yes w/waterway=lock_gate w/seamark:type=lock_basin'
+# Wehre stehen ebenso oft als **Weg** wie als Knoten, quer über den Fluss gezeichnet. In
+# Deutschland 8.386 als Weg gegen 11.493 als Knoten. Die Wege fehlten hier, und damit
+# fehlte vor jedem zweiten Wehr die Warnung: Am Paradieswehr in Jena, am Wehr Kahla und
+# am Saale-Wehr Uhlstädt stand nichts in den Kacheln.
+OBSTWAYS='w/waterway=weir,dam,sluice_gate'
+# Umtragen. An Wehren ist der Weg drumherum in OSM gut gepflegt: der Pfad selbst als
+# whitewater=portage_way oder canoe=portage, die Ein- und Ausstiege als Knoten am Ufer.
+PORTAGE='w/whitewater=portage_way w/canoe=portage w/portage'
+LANDINGS='n/leisure=slipway n/canoe=put_in n/whitewater'
 # Was den Weg versperrt, und die Hinweiszeichen mit ihren Werten.
 NODES='n/waterway=lock_gate,weir,dam,sluice_gate'
 BARRIERS='n/barrier=no_entry,prohibition,lock_gate'
@@ -201,7 +210,7 @@ while IFS= read -r line; do
     # Die Knoten der gefundenen Wege kommen mit, sonst hätten wir Linien ohne Punkte.
     # shellcheck disable=SC2086
     osmium tags-filter --overwrite -o "$small" "$pbf" \
-        "$WAYS" $LOCKWAYS "$NODES" "$BARRIERS" "$NOTICES"
+        "$WAYS" $LOCKWAYS $OBSTWAYS $PORTAGE "$NODES" $LANDINGS "$BARRIERS" "$NOTICES"
     printf '  Filtern: fertig, %s\n' "$(du -h "$small" | cut -f1)"
 
     # Die Auszüge bleiben **liegen**. Ganz Europa sind rund 28 GB — auf einer 48-GB-Platte
