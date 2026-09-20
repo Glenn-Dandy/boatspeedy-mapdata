@@ -44,12 +44,15 @@ KEEP_WAY = (
     "maxlength", "maxwidth", "CEMT", "ref",
     # Umtragen: der Weg um ein Wehr herum, mit seiner Beschaffenheit.
     "whitewater", "portage", "leisure", "surface",
+    # Wasserkraft: durch die Turbinen fährt niemand.
+    "power", "generator:source", "plant:source",
 )
 KEEP_NODE = (
     "waterway", "barrier", "name",
     "waterway:maxspeed", "maxspeed",
     # Ein- und Ausstiege am Ufer, die Enden einer Umtragung.
     "leisure", "canoe", "whitewater", "access",
+    "power", "generator:source",
 )
 
 # Bei Seezeichen wird **alles** behalten, was mit `seamark:` beginnt.
@@ -150,11 +153,17 @@ def collect(path: str, buckets: Buckets) -> tuple[int, int]:
                     or props.get("canoe") == "portage"
                     or bool(props.get("portage"))
                 )
+                # Das Kraftwerksgebäude: kein Weg, aber es sagt, wo der Kanal durch die
+                # Turbinen läuft.
+                kraftwerk = (
+                    props.get("generator:source") == "hydro"
+                    or props.get("plant:source") == "hydro"
+                )
                 if basin:
                     tags.update(
                         {k: v for k, v in props.items() if k.startswith(SEAMARK_PREFIX)}
                     )
-                if not tags.get("waterway") and not basin and not umtragen:
+                if not tags.get("waterway") and not basin and not umtragen and not kraftwerk:
                     skipped += 1
                     continue
                 # GeoJSON zählt Länge vor Breite — hier andersherum, wie bei Overpass.

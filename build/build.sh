@@ -71,6 +71,11 @@ OBSTWAYS='w/waterway=weir,dam,sluice_gate'
 # whitewater=portage_way oder canoe=portage, die Ein- und Ausstiege als Knoten am Ufer.
 PORTAGE='w/whitewater=portage_way w/canoe=portage w/portage'
 LANDINGS='n/leisure=slipway n/canoe=put_in n/whitewater'
+# Wasserkraftanlagen. Der Kanal durch die Turbinen ist in OSM ein gewöhnlicher
+# waterway=canal, und die Route nahm ihn, weil er am Wehr vorbeiführt. Dort fährt niemand
+# durch. In OSM stehen sie als power=generator mit generator:source=hydro, als Knoten und
+# als Gebäude.
+POWER='n/generator:source=hydro w/generator:source=hydro w/plant:source=hydro'
 # Was den Weg versperrt, und die Hinweiszeichen mit ihren Werten.
 NODES='n/waterway=lock_gate,weir,dam,sluice_gate'
 BARRIERS='n/barrier=no_entry,prohibition,lock_gate'
@@ -210,7 +215,7 @@ while IFS= read -r line; do
     # Die Knoten der gefundenen Wege kommen mit, sonst hätten wir Linien ohne Punkte.
     # shellcheck disable=SC2086
     osmium tags-filter --overwrite -o "$small" "$pbf" \
-        "$WAYS" $LOCKWAYS $OBSTWAYS $PORTAGE "$NODES" $LANDINGS "$BARRIERS" "$NOTICES"
+        "$WAYS" $LOCKWAYS $OBSTWAYS $PORTAGE $POWER "$NODES" $LANDINGS "$BARRIERS" "$NOTICES"
     printf '  Filtern: fertig, %s\n' "$(du -h "$small" | cut -f1)"
 
     # Die Auszüge bleiben **liegen**. Ganz Europa sind rund 28 GB — auf einer 48-GB-Platte
