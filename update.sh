@@ -8,8 +8,12 @@ set -eu
 
 cd "$(dirname "$0")"
 
-echo "== Quellen holen =="
-git pull --ff-only
+# Nur, wenn es ein Git-Arbeitsstand ist. Auf dem Server liegen die Skripte als
+# Kopie, ohne .git; dort brach der Lauf hier sofort ab.
+if [ -d .git ]; then
+    echo "== Quellen holen =="
+    git pull --ff-only
+fi
 
 echo "== Erzeuger bauen =="
 docker compose build --pull mapdata-build
