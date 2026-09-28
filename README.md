@@ -1,7 +1,7 @@
 # BoatSpeedy — Kartendaten
 
-Wasserwege aus OpenStreetMap, in Kacheln geschnitten, damit die App **offline** routen
-kann. Ein nginx im Docker-Container liefert sie aus; erzeugt werden sie von einem
+Wasserwege aus OpenStreetMap, in Kacheln geschnitten, aus denen die App ihre Routen
+selbst rechnet. Ein nginx im Docker-Container liefert sie aus; erzeugt werden sie von einem
 zweiten Container, der nur läuft, wenn man ihn ruft.
 
 Die App selbst liegt in [Glenn-Dandy/BoatSpeedy](https://github.com/Glenn-Dandy/BoatSpeedy).
@@ -18,9 +18,9 @@ aller Welt genutzt und entsprechend oft überlastet. Gemessen am 4. September 20
 | `overpass.kumi.systems` | zweimal beantwortet, dreimal 504 nach je 40 s |
 | `overpass.private.coffee` | zweimal beantwortet, zweimal 504, einmal gar nichts |
 
-Routing scheiterte damit häufiger, als es gelang — und auf dem Wasser, wo es gebraucht
-wird, gibt es ohnehin oft kein Netz. Mit den Kacheln wird **einmal** geladen, danach
-rechnet das Handy allein.
+Routing scheiterte damit häufiger, als es gelang. Mit den Kacheln wird **einmal**
+geladen, danach rechnet das Handy die Route selbst, ohne auf diese Server angewiesen zu
+sein. Die Karte darunter kommt weiterhin von OpenStreetMap und braucht Netz.
 
 ## Aufbau
 
