@@ -55,7 +55,9 @@ mkdir -p "$GEO"
 # Welches Fahrzeug unterwegs ist, entscheidet **nicht** über die Gewässerart, sondern
 # nur darüber, welche Verbote gelten (boat=no, motorboat=no, canoe=no) — und das wertet
 # die App aus den Merkmalen aus, die hier ohnehin mitkommen.
-WAYS='w/waterway=river,canal,fairway'
+# flowline: der Weg durch einen See, neuerdings statt river eingetragen (Müritz, Havel).
+# link: kurze Verbindung vom Fahrwasser zu Anleger oder Hafen.
+WAYS='w/waterway=river,canal,fairway,flowline,link'
 # Schleusen liegen in OSM meist als **Weg** vor, nicht als Knoten: die Kammer als
 # waterway=canal mit lock=yes, die Tore als eigene kurze Wege. Die Knotenfassung unten
 # gibt es auch, aber bei der Schleuse Wettin etwa ist alles Weg — und damit fiel sie
