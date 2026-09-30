@@ -72,7 +72,9 @@ OBSTWAYS='w/waterway=weir,dam,sluice_gate'
 # Umtragen. An Wehren ist der Weg drumherum in OSM gut gepflegt: der Pfad selbst als
 # whitewater=portage_way oder canoe=portage, die Ein- und Ausstiege als Knoten am Ufer.
 PORTAGE='w/whitewater=portage_way w/canoe=portage w/portage'
-LANDINGS='n/leisure=slipway n/canoe=put_in n/whitewater'
+# canoe wie whitewater: Einstieg, Ausstieg und beides zusammen. Ohne canoe=egress fehlten
+# die Ausstiege an der Müritz und an Kraftwerken wie Dorndorf.
+LANDINGS='n/leisure=slipway n/canoe=put_in,egress,put_in;egress,egress;put_in n/whitewater'
 # Wasserkraftanlagen. Der Kanal durch die Turbinen ist in OSM ein gewöhnlicher
 # waterway=canal, und die Route nahm ihn, weil er am Wehr vorbeiführt. Dort fährt niemand
 # durch. In OSM stehen sie als power=generator mit generator:source=hydro, als Knoten und
