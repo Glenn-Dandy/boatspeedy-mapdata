@@ -42,7 +42,9 @@ GEO="$WORK/geojson"
 # Die Zwischenergebnisse der Länder bleiben **liegen**. Damit ist der Lauf
 # wiederaufnehmbar: Bricht er bei Land dreißig ab — Netz weg, Sperre, Neustart —, macht
 # der nächste Aufruf bei Land dreißig weiter, statt die neunundzwanzig davor noch einmal
-# zu holen und zu filtern. Mit FRESH=1 fängt er von vorn an.
+# zu holen und zu filtern. Nach einem vollständigen Lauf räumt das Skript sie selbst weg
+# (siehe unten), der nächste Lauf ist also von sich aus frisch. FRESH=1 braucht es nur, um
+# einen abgebrochenen Lauf von vorn zu beginnen.
 [ "${FRESH:-0}" = "1" ] && rm -rf "$GEO"
 rm -rf "$WORK/tiles"
 mkdir -p "$GEO"
@@ -267,9 +269,21 @@ echo "== Kacheln schneiden =="
 # blosse Datum, kuerzere Werte aus frueheren Laeufen bleiben also korrekt aelter.
 python3 /build/tile.py "$OUT" "$WORK/tiles" "$(date -u +%Y-%m-%dT%H:%MZ)" "$GEO"/*.geojsonseq
 
-# Die Zwischenergebnisse bleiben für den nächsten Aufruf liegen; nur die Kachel-
-# Zwischendateien werden aufgeräumt. Wer Platz braucht: rm -rf build/work/geojson
 rm -rf "$WORK/tiles"
+# **Nach einem vollständigen Lauf fängt der nächste frisch an.** Die Zwischenergebnisse
+# sind nur für die Wiederaufnahme da. Blieben sie liegen, übersprang jeder spätere Lauf
+# alle Länder mit "bereits verarbeitet" und schnitt die Kacheln aus den alten Daten:
+# Ohne FRESH=1 kam keine einzige OSM-Änderung mehr an. Die Auszüge bleiben trotzdem
+# liegen, der nächste Lauf holt also nur die Tagesdifferenzen.
+if [ -z "$failed" ]; then
+    rm -rf "$GEO"
+else
+    # Fehlt etwas, holt der nächste Aufruf nur das nach. Die Gebiete mit altem Auszug
+    # aber auch: Sonst stünden sie als "bereits verarbeitet" da und blieben alt.
+    for f in $nicht_aktuell; do
+        rm -f "$GEO/$(printf '%s' "$f" | tr '/' '_').geojsonseq"
+    done
+fi
 echo
 echo "Fertig. Ergebnis liegt in $OUT."
 if [ -n "$failed" ]; then

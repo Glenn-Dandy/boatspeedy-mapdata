@@ -136,7 +136,9 @@ doch neu geladen. `KEEP_PBF=0` löscht die Auszüge wie früher sofort nach dem 
 ### Wiederaufnahme
 
 Ein abgebrochener Lauf wird beim nächsten Aufruf dort fortgesetzt, wo er stand: Länder
-mit vorhandenem Zwischenergebnis werden übersprungen. `FRESH=1` fängt von vorn an.
+mit vorhandenem Zwischenergebnis werden übersprungen. Nach einem vollständigen Lauf werden
+die Zwischenergebnisse gelöscht, der nächste Lauf verarbeitet also wieder alle Länder mit
+aktuellen Daten. `FRESH=1` fängt auch einen abgebrochenen Lauf von vorn an.
 
 ### Platzbedarf
 
