@@ -28,6 +28,7 @@ sein. Die Karte darunter kommt weiterhin von OpenStreetMap und braucht Netz.
 regions.txt            welche Gebiete eingelesen werden
 build/build.sh         holen -> filtern -> ausgeben
 build/tile.py          in Kacheln schneiden
+nts/nts.py             Schifffahrtsmeldungen von ELWIS holen
 nginx/default.conf     Auslieferung
 data/                  Ergebnis (nicht im Repo)
 ```
@@ -67,7 +68,7 @@ git clone git@github.com:Glenn-Dandy/boatspeedy-mapdata.git
 cd boatspeedy-mapdata
 cp .env.example .env
 docker compose run --rm mapdata-build     # dauert, je nach Gebiet
-docker compose up -d mapdata-web
+docker compose up -d mapdata-web mapdata-nts
 ```
 
 Danach horcht der Auslieferer auf Port 8081:
@@ -75,6 +76,7 @@ Danach horcht der Auslieferer auf Port 8081:
 ```bash
 curl http://127.0.0.1:8081/healthz        # ok
 curl http://127.0.0.1:8081/index.json     # Verzeichnis der Kacheln
+curl http://127.0.0.1:8081/mapdata/nts.json   # Schifffahrtsmeldungen
 ```
 
 Von außen erreichbar wird er über den Reverse-Proxy, als Unterpfad `/mapdata/` der
@@ -149,6 +151,22 @@ dann liegt die Spitze bei der Größe des größten einzelnen Auszugs, Deutschla
 Frankreich je rund 4 GB, und jeder Lauf lädt alles neu. Den Europa-Auszug am Stück rührt
 das Skript bewusst nicht an.
 
+## Schifffahrtsmeldungen
+
+`mapdata-nts` holt alle 30 Minuten die Nachrichten für die Binnenschifffahrt von
+[ELWIS](https://www.elwis.de): Sperrungen und Einschränkungen an Bundeswasserstraßen, gültig
+ab heute und in den nächsten sieben Tagen. ELWIS liefert sie als SOAP, rund 1,5 MB XML in
+einer halben Minute. Abgelegt wird `data/nts.json.gz` mit rund 70 kB, je Meldung Text,
+Zeitraum, Orte und Art der Einschränkung. Aufgehobene Meldungen fallen weg, von jeder Nummer
+bleibt die letzte Fassung.
+
+Die Texte bleiben unverändert. ELWIS-Inhalte sind Open Data und dürfen weitergegeben werden,
+solange der Inhalt unverändert bleibt und www.elwis.de als Quelle genannt wird.
+
+```bash
+docker compose logs mapdata-nts           # eine Zeile je Abruf
+```
+
 ## Eigener Server in der App
 
 Wer die Kacheln selbst erzeugt, trägt seinen Server in der App ein: **Navigation,
@@ -161,4 +179,5 @@ Android lädt ohne Weiteres nur über `https`.
 
 Die Skripte stehen unter MIT, die **erzeugten Kartendaten unter ODbL**, denn sie stammen aus
 OpenStreetMap. Namensnennung „© OpenStreetMap-Mitwirkende" ist Pflicht, und wer die
-Kacheln weitergibt, muss das ebenfalls unter ODbL tun. Einzelheiten in [LICENSE](LICENSE).
+Kacheln weitergibt, muss das ebenfalls unter ODbL tun. Die Schifffahrtsmeldungen stammen von
+ELWIS (Quelle: www.elwis.de). Einzelheiten in [LICENSE](LICENSE).

@@ -46,6 +46,34 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Holt alle 30 Minuten die Nachrichten für die Binnenschifffahrt von ELWIS
+  # (Sperrungen, Einschränkungen) und legt sie als data/nts.json.gz neben die Kacheln.
+  # Die App lädt davon wenige Kilobyte statt selbst 1,5 MB XML von ELWIS.
+  mapdata-nts:
+    image: python:3.12-alpine
+    container_name: mapdata-nts
+    restart: unless-stopped
+    command: ["python3", "-u", "/nts/nts.py", "/out"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
+    volumes:
+      - ./nts/nts.py:/nts/nts.py:ro
+      - ./data:/out
+
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    pids_limit: 32
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+
   # Erzeugt die Kacheln. Läuft **nicht** bei `docker compose up` mit — dafür sorgt
   # das Profil. Aufruf: docker compose run --rm mapdata-build
   mapdata-build:
