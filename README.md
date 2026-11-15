@@ -29,6 +29,7 @@ regions.txt            welche Gebiete eingelesen werden
 build/build.sh         holen -> filtern -> ausgeben
 build/tile.py          in Kacheln schneiden
 nts/nts.py             Schifffahrtsmeldungen von ELWIS holen
+locks/locks.py         Betriebszeiten der Schleusen von ELWIS holen
 nginx/default.conf     Auslieferung
 data/                  Ergebnis (nicht im Repo)
 ```
@@ -68,7 +69,7 @@ git clone git@github.com:Glenn-Dandy/boatspeedy-mapdata.git
 cd boatspeedy-mapdata
 cp .env.example .env
 docker compose run --rm mapdata-build     # dauert, je nach Gebiet
-docker compose up -d mapdata-web mapdata-nts
+docker compose up -d mapdata-web mapdata-nts mapdata-locks
 ```
 
 Danach horcht der Auslieferer auf Port 8081:
@@ -77,6 +78,7 @@ Danach horcht der Auslieferer auf Port 8081:
 curl http://127.0.0.1:8081/healthz        # ok
 curl http://127.0.0.1:8081/index.json     # Verzeichnis der Kacheln
 curl http://127.0.0.1:8081/mapdata/nts.json   # Schifffahrtsmeldungen
+curl http://127.0.0.1:8081/mapdata/locks.json # Betriebszeiten der Schleusen
 ```
 
 Von außen erreichbar wird er über den Reverse-Proxy, als Unterpfad `/mapdata/` der
@@ -165,6 +167,28 @@ solange der Inhalt unverändert bleibt und www.elwis.de als Quelle genannt wird.
 
 ```bash
 docker compose logs mapdata-nts           # eine Zeile je Abruf
+```
+
+## Betriebszeiten der Schleusen
+
+`mapdata-locks` holt einmal am Tag die Betriebszeiten der Schleusen an Bundeswasserstraßen
+von [ELWIS](https://www.elwis.de/DE/dynamisch/Schleuseninformationen/). Eine Schnittstelle
+gibt es dafür nicht, aber je Schleuse eine Seite mit derselben Tabelle: Zeitraum, dann
+Montag bis Sonntag. Die Seiten werden nacheinander abgerufen, mit einer Sekunde Pause.
+ELWIS braucht für eine Seite oft mehrere Sekunden, ein Lauf dauert knapp eine Stunde. Die Tabelle wird Zelle für Zelle unverändert übernommen.
+
+Die Seiten nennen keine Koordinaten, nur Name und Wasserstraße. Die Lage kommt aus den
+Kacheln: Aus „Mühlendamm Nordkammer" und „Schleuse Mühlendamm" bleibt beide Male
+„mühlendamm", und die ELWIS-Schleuse bekommt die Punkte der OSM-Schleuse dieses Namens.
+Gibt es den Namen mehrfach, entscheidet die Wasserstraße; bleibt es mehrdeutig, fällt die
+Schleuse weg. Rund 490 von 535 finden so ihren Platz, es fehlen vor allem die französischen
+Schleusen am Oberrhein. Ohne Kacheln gibt es also auch keine Zeiten.
+
+Abgelegt wird `data/locks.json.gz`. Die Punkte stammen aus OSM (ODbL), die Zeiten von ELWIS
+(Quelle: www.elwis.de).
+
+```bash
+docker compose logs mapdata-locks         # eine Zeile je Lauf
 ```
 
 ## Eigener Server in der App

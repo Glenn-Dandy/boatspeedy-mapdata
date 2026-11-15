@@ -74,6 +74,33 @@ services:
         max-size: "1m"
         max-file: "3"
 
+  # Holt einmal am Tag die Betriebszeiten der Schleusen von ELWIS und legt sie als
+  # data/locks.json.gz ab. Liest dafür die Kacheln, um die Schleusen zu verorten.
+  mapdata-locks:
+    image: python:3.12-alpine
+    container_name: mapdata-locks
+    restart: unless-stopped
+    command: ["python3", "-u", "/locks/locks.py", "/out"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+
+    volumes:
+      - ./locks/locks.py:/locks/locks.py:ro
+      - ./data:/out
+
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 32
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "3"
+
   # Erzeugt die Kacheln. Läuft **nicht** bei `docker compose up` mit — dafür sorgt
   # das Profil. Aufruf: docker compose run --rm mapdata-build
   mapdata-build:
