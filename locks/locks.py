@@ -33,8 +33,8 @@ USER_AGENT = "boatspeedy-mapdata (+https://github.com/Glenn-Dandy/boatspeedy-map
 # 500 Seiten.
 INTERVAL_S = 24 * 3600
 
-# Pause zwischen zwei Seiten. ELWIS braucht selbst oft mehrere Sekunden für eine Seite,
-# ein Lauf dauert knapp eine Stunde. Eilig ist es nicht, die Zeiten gelten monatelang.
+# Pause zwischen zwei Seiten. Ein Lauf dauert damit gut zehn Minuten. Eilig ist es
+# nicht, die Zeiten gelten monatelang.
 PAUSE_S = 1.0
 
 # Nur Kacheln in diesem Rahmen werden nach Schleusen durchsucht: ELWIS kennt nur

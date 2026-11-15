@@ -175,7 +175,7 @@ docker compose logs mapdata-nts           # eine Zeile je Abruf
 von [ELWIS](https://www.elwis.de/DE/dynamisch/Schleuseninformationen/). Eine Schnittstelle
 gibt es dafür nicht, aber je Schleuse eine Seite mit derselben Tabelle: Zeitraum, dann
 Montag bis Sonntag. Die Seiten werden nacheinander abgerufen, mit einer Sekunde Pause.
-ELWIS braucht für eine Seite oft mehrere Sekunden, ein Lauf dauert knapp eine Stunde. Die Tabelle wird Zelle für Zelle unverändert übernommen.
+Ein Lauf dauert gut zehn Minuten (am 15.11.2026: 694 s). Die Tabelle wird Zelle für Zelle unverändert übernommen.
 
 Die Seiten nennen keine Koordinaten, nur Name und Wasserstraße. Die Lage kommt aus den
 Kacheln: Aus „Mühlendamm Nordkammer" und „Schleuse Mühlendamm" bleibt beide Male
