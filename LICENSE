@@ -20,3 +20,7 @@ Open Database License 1.0 (ODbL). Es gilt:
 
 Lizenztext: https://opendatacommons.org/licenses/odbl/1-0/
 Quelle der Auszüge: https://download.geofabrik.de/
+
+Schifffahrtsmeldungen (nts.json) und Betriebszeiten der Schleusen (locks.json) stammen
+von ELWIS, Wasserstraßen- und Schifffahrtsverwaltung des Bundes. Sie werden unverändert
+übernommen. Quelle: www.elwis.de
